@@ -68,11 +68,8 @@ export async function timeIn(userId: string, timeStr: string, dateStr?: string) 
   const existing = await DailyRecordModel.findOne({ userId, date });
   if (existing?.morningIn) return { error: "Already timed in for today." };
 
-  const [h, m] = timeStr.split(":").map(Number);
-  const now = toZonedTime(new Date(), PH_TZ);
-  now.setFullYear(parseInt(date.split("-")[0]), parseInt(date.split("-")[1]) - 1, parseInt(date.split("-")[2]));
-  now.setHours(h, m, 0, 0);
-  const isoStr = now.toISOString();
+  // Fixed: Explicitly construct the ISO string with the +08:00 offset
+  const isoStr = new Date(`${date}T${timeStr}:00.000+08:00`).toISOString();
 
   const late = isLate(isoStr);
 
@@ -98,11 +95,8 @@ export async function timeOut(userId: string, timeStr: string, dateStr?: string)
   if (!record) return { error: "No time-in record found for today." };
   if (record.afternoonOut) return { error: "Already timed out for today." };
 
-  const [h, m] = timeStr.split(":").map(Number);
-  const now = toZonedTime(new Date(), PH_TZ);
-  now.setFullYear(parseInt(date.split("-")[0]), parseInt(date.split("-")[1]) - 1, parseInt(date.split("-")[2]));
-  now.setHours(h, m, 0, 0);
-  const isoStr = now.toISOString();
+  // Fixed: Explicitly construct the ISO string with the +08:00 offset
+  const isoStr = new Date(`${date}T${timeStr}:00.000+08:00`).toISOString();
 
   const early = isEarlyOut(isoStr);
   const hours = calculateSmartHours(record.morningIn, null, null, isoStr, null, null);
@@ -206,11 +200,9 @@ export async function upsertRecord(userId: string, data: {
 
   const buildISO = (timeStr: string | undefined, date: string): string | null => {
     if (!timeStr) return null;
-    const [h, m] = timeStr.split(":").map(Number);
-    const d = toZonedTime(new Date(), PH_TZ);
-    d.setFullYear(parseInt(date.split("-")[0]), parseInt(date.split("-")[1]) - 1, parseInt(date.split("-")[2]));
-    d.setHours(h, m, 0, 0);
-    return d.toISOString();
+    // Fixed: Explicitly construct the ISO string with the +08:00 offset
+    // Format: YYYY-MM-DDTHH:mm:00.000+08:00
+    return new Date(`${date}T${timeStr}:00.000+08:00`).toISOString();
   };
 
   const morningIn = buildISO(data.morningIn, data.date);
