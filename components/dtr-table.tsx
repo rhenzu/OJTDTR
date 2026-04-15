@@ -514,30 +514,45 @@ export function DTRTable({
           <tbody>
             {/* ─── FIX 2: actual data rows ─── */}
             {days.map((date) => {
-              const row = rows[date];
-              const parsedDate = parseISO(date);
-              const dateLabel = format(parsedDate, "MM/dd/yyyy");
-              const hours = calcRowHours(row);
+  const row = rows[date];
+  const parsedDate = parseISO(date);
+  const dateLabel = format(parsedDate, "MM/dd/yyyy");
+  const hours = calcRowHours(row);
+  const weekend = isWeekend(parsedDate);
+  const dayName = format(parsedDate, "EEEE"); // "Saturday" / "Sunday"
 
-              return (
-                <tr key={`print-${date}`} style={{ height: "22px" }}>
-                  <td className="border border-black p-1 text-left whitespace-nowrap">{dateLabel}</td>
-                  <td className="border border-black p-1">{formatPrintTime(row.morningIn)}</td>
-                  <td className="border border-black p-1">{formatPrintTime(row.morningOut)}</td>
-                  <td className="border border-black p-1">{formatPrintTime(row.afternoonIn)}</td>
-                  <td className="border border-black p-1">{formatPrintTime(row.afternoonOut)}</td>
-                  <td className="border border-black p-1">{formatPrintTime(row.overtimeIn)}</td>
-                  <td className="border border-black p-1">{formatPrintTime(row.overtimeOut)}</td>
-                  <td className="border border-black p-1 text-left max-w-[180px] break-words leading-tight">
-                    {row.accomplishments}
-                  </td>
-                  <td className="border border-black p-1 font-semibold">
-                    {hours > 0 ? hours.toFixed(2) : ""}
-                  </td>
-                  <td className="border border-black p-1">{row.verifiedBy}</td>
-                </tr>
-              );
-            })}
+  const hasNoTimes = !row.morningIn && !row.morningOut && !row.afternoonIn && !row.afternoonOut && !row.overtimeIn && !row.overtimeOut;
+  const isHoliday = row.accomplishments?.toLowerCase() === "holiday";
+
+  // Show dashes in time cells when: weekend, or holiday with no times, or any row with accomplishment but no times
+  const showDashes = weekend || (hasNoTimes && row.accomplishments);
+
+  // What to show in the accomplishments column
+  const accomplishmentLabel = weekend
+    ? dayName                          // "Saturday" / "Sunday"
+    : row.accomplishments || "";
+
+  const dash = "———";
+
+  return (
+    <tr key={`print-${date}`} style={{ height: "22px" }}>
+      <td className="border border-black p-1 text-left whitespace-nowrap">{dateLabel}</td>
+      <td className="border border-black p-1">{showDashes ? dash : formatPrintTime(row.morningIn)}</td>
+      <td className="border border-black p-1">{showDashes ? dash : formatPrintTime(row.morningOut)}</td>
+      <td className="border border-black p-1">{showDashes ? dash : formatPrintTime(row.afternoonIn)}</td>
+      <td className="border border-black p-1">{showDashes ? dash : formatPrintTime(row.afternoonOut)}</td>
+      <td className="border border-black p-1">{showDashes ? dash : formatPrintTime(row.overtimeIn)}</td>
+      <td className="border border-black p-1">{showDashes ? dash : formatPrintTime(row.overtimeOut)}</td>
+      <td className="border border-black p-1 text-left max-w-[180px] break-words leading-tight">
+        {accomplishmentLabel}
+      </td>
+      <td className="border border-black p-1 font-semibold">
+        {hours > 0 ? hours.toFixed(2) : ""}
+      </td>
+      <td className="border border-black p-1">{row.verifiedBy}</td>
+    </tr>
+  );
+})}
 
             {/* ─── FIX 2: blank padding rows so the table always shows PRINT_ROWS rows ─── */}
             {Array.from({ length: blankPrintRows }).map((_, i) => (
