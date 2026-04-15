@@ -195,11 +195,26 @@ export function DTRTable({
       {/* Setting @page margin to 0 removes the browser's margin area where those
           elements live. We then add padding directly to the print document div. */}
       <style dangerouslySetInnerHTML={{ __html: `
-        @media print {
-          @page { margin: 0; size: auto; }
-          body { margin: 0; padding: 0; background: white; }
-        }
-      `}} />
+  @media print {
+    @page { margin: 0; size: auto; }
+    body { margin: 0; padding: 0; background: white; }
+
+    /* Hide EVERYTHING on the page… */
+    body * { visibility: hidden; }
+
+    /* …then reveal only the print document and its children */
+    #dtr-print-document,
+    #dtr-print-document * { visibility: visible; }
+
+    /* Pin it to the top-left corner of the page */
+    #dtr-print-document {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+    }
+  }
+`}} />
 
       {/* Action buttons (Hidden on Print) */}
       {!readOnly && (
