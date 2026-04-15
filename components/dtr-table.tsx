@@ -17,6 +17,12 @@ const PH_TZ = "Asia/Manila";
 // Always render exactly this many data rows in the print table
 const PRINT_ROWS = 16;
 
+function formatSignatureDate(dateStr: string): string {
+  if (!dateStr) return "";
+  try { return format(parseISO(dateStr), "MMMM d, yyyy"); }
+  catch { return dateStr; }
+}
+
 function isoToTime(iso: string | null | undefined): string {
   if (!iso) return "";
   try { return format(toZonedTime(parseISO(iso), PH_TZ), "HH:mm"); } 
@@ -608,7 +614,7 @@ export function DTRTable({
                   className="border-b border-black pb-0.5 flex items-end"
                   style={{ minWidth: "120px" }}
                 >
-                  <span>{supervisorDate}</span>
+                  <span>{formatSignatureDate(supervisorDate)}</span>
                 </div>
               </div>
             </div>
@@ -632,7 +638,7 @@ export function DTRTable({
                   className="border-b border-black pb-0.5 flex items-end"
                   style={{ minWidth: "120px" }}
                 >
-                  <span>{studentDate}</span>
+                  <span>{formatSignatureDate(studentDate)}</span>
                 </div>
               </div>
             </div>
