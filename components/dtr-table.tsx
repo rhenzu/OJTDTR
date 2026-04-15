@@ -14,6 +14,9 @@ import type { IDailyRecord, IDTRForm } from "@/types";
 
 const PH_TZ = "Asia/Manila";
 
+// Always render exactly this many data rows in the print table
+const PRINT_ROWS = 16;
+
 function isoToTime(iso: string | null | undefined): string {
   if (!iso) return "";
   try { return format(toZonedTime(parseISO(iso), PH_TZ), "HH:mm"); } 
@@ -183,8 +186,21 @@ export function DTRTable({
     finally { setSaving(false); }
   };
 
+  // How many blank padding rows to add so the print table always has PRINT_ROWS data rows
+  const blankPrintRows = Math.max(0, PRINT_ROWS - days.length);
+
   return (
     <div className="space-y-4">
+      {/* ─── FIX 1: suppress browser print header/footer (URL bar, date, page #) ─── */}
+      {/* Setting @page margin to 0 removes the browser's margin area where those
+          elements live. We then add padding directly to the print document div. */}
+      <style dangerouslySetInnerHTML={{ __html: `
+        @media print {
+          @page { margin: 0; size: auto; }
+          body { margin: 0; padding: 0; background: white; }
+        }
+      `}} />
+
       {/* Action buttons (Hidden on Print) */}
       {!readOnly && (
         <div className="flex gap-2 justify-end print:hidden flex-wrap">
@@ -413,34 +429,54 @@ export function DTRTable({
       </div>
 
       {/* ========================================= */}
-      {/* PRINT VIEW (Strict Word Document Layout)    */}
+      {/* PRINT VIEW (Strict Word Document Layout)  */}
       {/* ========================================= */}
-      <div id="dtr-print-document" className="hidden print:block w-full bg-white text-black font-sans mx-auto">
-        <h1 className="text-center font-bold text-base mb-6 tracking-wide uppercase">DAILY ATTENDANCE AND ACCOMPLISHMENT FORM</h1>
-        
+      {/*
+        FIX 1: @page { margin: 0 } (injected above) removes the browser's URL /
+        title strip. We compensate with padding-[15mm] on this div so content
+        isn't flush with the paper edge.
+      */}
+      <div
+        id="dtr-print-document"
+        className="hidden print:block w-full bg-white text-black font-sans mx-auto"
+        style={{ padding: "15mm 15mm 12mm" }}
+      >
+        <h1 className="text-center font-bold text-base mb-6 tracking-wide uppercase">
+          DAILY ATTENDANCE AND ACCOMPLISHMENT FORM
+        </h1>
+
+        {/* Student Name / Internship Site */}
         <div className="flex justify-between mb-3 text-sm">
           <div className="flex items-end">
             <span className="font-semibold whitespace-nowrap">Student Name:</span>
-            <span className="border-b border-black ml-2 px-4 min-w-[250px] text-center inline-block leading-tight pb-0.5">{userName}</span>
+            <span className="border-b border-black ml-2 px-4 min-w-[220px] text-center inline-block leading-tight pb-0.5">
+              {userName}
+            </span>
           </div>
           <div className="flex items-end">
             <span className="font-semibold whitespace-nowrap">Internship Site:</span>
-            <span className="border-b border-black ml-2 px-4 min-w-[250px] text-center inline-block leading-tight pb-0.5">{internshipSite || "—"}</span>
+            <span className="border-b border-black ml-2 px-4 min-w-[220px] text-center inline-block leading-tight pb-0.5">
+              {internshipSite || "—"}
+            </span>
           </div>
         </div>
-        
+
+        {/* Period */}
         <div className="mb-4 text-sm flex items-end">
           <span className="font-semibold whitespace-nowrap">For the Period</span>
-          <span className="border-b border-black ml-2 px-6 min-w-[300px] text-center inline-block leading-tight pb-0.5">{periodTitle}</span>
+          <span className="border-b border-black ml-2 px-6 min-w-[280px] text-center inline-block leading-tight pb-0.5">
+            {periodTitle}
+          </span>
         </div>
 
+        {/* ─── Main table ─── */}
         <table className="w-full border-collapse border border-black text-[11px] mb-3 text-center">
           <thead>
             <tr>
               <th className="border border-black p-1 align-middle font-semibold" rowSpan={2}>Date</th>
-              <th className="border border-black p-1 font-semibold" colSpan={2}>Morning</th>
-              <th className="border border-black p-1 font-semibold" colSpan={2}>Afternoon</th>
-              <th className="border border-black p-1 font-semibold" colSpan={2}>Overtime</th>
+              <th className="border border-black p-1 font-semibold" colSpan={2}>Morning<br /><span className="font-normal text-[10px]">IN / OUT</span></th>
+              <th className="border border-black p-1 font-semibold" colSpan={2}>Afternoon<br /><span className="font-normal text-[10px]">IN / OUT</span></th>
+              <th className="border border-black p-1 font-semibold" colSpan={2}>Overtime<br /><span className="font-normal text-[10px]">IN / OUT</span></th>
               <th className="border border-black p-1 align-middle font-semibold" rowSpan={2}>Accomplishment/s</th>
               <th className="border border-black p-1 align-middle font-semibold w-12" rowSpan={2}>Total Hours</th>
               <th className="border border-black p-1 align-middle font-semibold" rowSpan={2}>Verified By</th>
@@ -455,14 +491,15 @@ export function DTRTable({
             </tr>
           </thead>
           <tbody>
+            {/* ─── FIX 2: actual data rows ─── */}
             {days.map((date) => {
               const row = rows[date];
               const parsedDate = parseISO(date);
               const dateLabel = format(parsedDate, "MM/dd/yyyy");
               const hours = calcRowHours(row);
-              
+
               return (
-                <tr key={`print-${date}`}>
+                <tr key={`print-${date}`} style={{ height: "22px" }}>
                   <td className="border border-black p-1 text-left whitespace-nowrap">{dateLabel}</td>
                   <td className="border border-black p-1">{formatPrintTime(row.morningIn)}</td>
                   <td className="border border-black p-1">{formatPrintTime(row.morningOut)}</td>
@@ -470,56 +507,126 @@ export function DTRTable({
                   <td className="border border-black p-1">{formatPrintTime(row.afternoonOut)}</td>
                   <td className="border border-black p-1">{formatPrintTime(row.overtimeIn)}</td>
                   <td className="border border-black p-1">{formatPrintTime(row.overtimeOut)}</td>
-                  <td className="border border-black p-1 text-left max-w-[180px] break-words leading-tight">{row.accomplishments}</td>
-                  <td className="border border-black p-1 font-semibold">{hours > 0 ? hours.toFixed(2) : ""}</td>
+                  <td className="border border-black p-1 text-left max-w-[180px] break-words leading-tight">
+                    {row.accomplishments}
+                  </td>
+                  <td className="border border-black p-1 font-semibold">
+                    {hours > 0 ? hours.toFixed(2) : ""}
+                  </td>
                   <td className="border border-black p-1">{row.verifiedBy}</td>
                 </tr>
               );
             })}
-            
-            {/* Summary Rows strictly matching the Word Document */}
+
+            {/* ─── FIX 2: blank padding rows so the table always shows PRINT_ROWS rows ─── */}
+            {Array.from({ length: blankPrintRows }).map((_, i) => (
+              <tr key={`blank-${i}`} style={{ height: "22px" }}>
+                <td className="border border-black p-1">&nbsp;</td>
+                <td className="border border-black p-1"></td>
+                <td className="border border-black p-1"></td>
+                <td className="border border-black p-1"></td>
+                <td className="border border-black p-1"></td>
+                <td className="border border-black p-1"></td>
+                <td className="border border-black p-1"></td>
+                <td className="border border-black p-1"></td>
+                <td className="border border-black p-1"></td>
+                <td className="border border-black p-1"></td>
+              </tr>
+            ))}
+
+            {/* TOTAL HOURS row */}
             <tr className="font-bold">
-              <td colSpan={8} className="border border-black p-1.5 text-right tracking-widest uppercase">Total Hours:</td>
+              <td colSpan={8} className="border border-black p-1.5 text-right tracking-widest uppercase">
+                TOTAL HOURS:
+              </td>
               <td className="border border-black p-1.5">{totalHoursThisForm.toFixed(2)}</td>
               <td className="border border-black p-1.5"></td>
             </tr>
+
+            {/* Previous / Total / Remaining summary row */}
             <tr className="font-bold text-[11px]">
               <td colSpan={4} className="border border-black p-1.5 text-left">
-                Previous Hours Worked: <span className="ml-1 font-normal">{previousHours.toFixed(2)}</span>
+                Previous Hours Worked:{" "}
+                <span className="ml-1 font-normal">{previousHours.toFixed(2)}</span>
               </td>
               <td colSpan={3} className="border border-black p-1.5 text-left">
-                Total Hours Worked: <span className="ml-1 font-normal">{totalWorked.toFixed(2)}</span>
+                Total Hours Worked:{" "}
+                <span className="ml-1 font-normal">{totalWorked.toFixed(2)}</span>
               </td>
               <td colSpan={3} className="border border-black p-1.5 text-left">
-                Remaining Hours: <span className="ml-1 font-normal">{remaining.toFixed(2)}</span>
+                Remaining Hours:{" "}
+                <span className="ml-1 font-normal">{remaining.toFixed(2)}</span>
               </td>
             </tr>
           </tbody>
         </table>
 
-        <p className="text-[11px] text-justify mb-8 leading-relaxed font-medium">
-          I CERTIFY on my honor that the above is a true and correct report of the hours of work performed, 
+        {/* Certification text */}
+        <p className="text-[11px] text-justify mb-6 leading-relaxed">
+          I CERTIFY on my honor that the above is a true and correct report of the hours of work performed,
           record of which was made daily at the time of arrival at and departure from office.
         </p>
 
-        <div className="flex justify-between items-start pt-2 px-6 text-sm">
-           <div className="flex flex-col items-center">
-              <div className="border-b border-black w-64 text-center pb-0.5 h-6 font-semibold flex items-end justify-center">
-                {supervisorSig}
+        {/* ─── FIX 3: Signature section matching the Word document exactly ─────────
+            Layout per Word doc:
+              [long sig line ________________________]   Date [short line _______]
+              Company Supervisor's Signature Over printed name
+
+              [long sig line ________________________]   Date [short line _______]
+              Student Intern's Signature    Date
+        ─────────────────────────────────────────────────────────────────────── */}
+        <div className="text-[11px] space-y-5">
+
+          {/* Supervisor row */}
+          <div>
+            {/* Underlines */}
+            <div className="flex items-end gap-4">
+              <div
+                className="border-b border-black pb-0.5 flex items-end"
+                style={{ minWidth: "260px", flex: "1" }}
+              >
+                <span>{supervisorSig}</span>
               </div>
-              <p className="mt-1 font-semibold">Company Supervisor's Signature</p>
-              <p className="text-xs">Over printed name / Date</p>
-           </div>
-           <div className="flex flex-col items-center">
-              <div className="border-b border-black w-64 text-center pb-0.5 h-6 font-semibold flex items-end justify-center">
-                {studentSig}
+              <div className="flex items-end gap-2 whitespace-nowrap">
+                <span className="font-semibold">Date</span>
+                <div
+                  className="border-b border-black pb-0.5 flex items-end"
+                  style={{ minWidth: "120px" }}
+                >
+                  <span>{supervisorDate}</span>
+                </div>
               </div>
-              <p className="mt-1 font-semibold">Student Intern's Signature</p>
-              <p className="text-xs">Date</p>
-           </div>
+            </div>
+            {/* Label below */}
+            <p className="mt-1">Company Supervisor&apos;s Signature Over printed name</p>
+          </div>
+
+          {/* Student row */}
+          <div>
+            {/* Underlines */}
+            <div className="flex items-end gap-4">
+              <div
+                className="border-b border-black pb-0.5 flex items-end"
+                style={{ minWidth: "260px", flex: "1" }}
+              >
+                <span>{studentSig}</span>
+              </div>
+              <div className="flex items-end gap-2 whitespace-nowrap">
+                <span className="font-semibold">Date</span>
+                <div
+                  className="border-b border-black pb-0.5 flex items-end"
+                  style={{ minWidth: "120px" }}
+                >
+                  <span>{studentDate}</span>
+                </div>
+              </div>
+            </div>
+            {/* Label below — Word doc shows "Student Intern's Signature    Date" on one line */}
+            <p className="mt-1">Student Intern&apos;s Signature</p>
+          </div>
+
         </div>
       </div>
-
     </div>
   );
 }
