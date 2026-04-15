@@ -26,6 +26,15 @@ function fmtDisplay(iso: string | null | undefined): string {
   catch { return ""; }
 }
 
+// Formats "14:30" to "02:30 PM" specifically for the physical printed document
+function formatPrintTime(time24?: string): string {
+  if (!time24) return "";
+  const [h, m] = time24.split(":").map(Number);
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const dh = h % 12 || 12;
+  return `${String(dh).padStart(2, '0')}:${String(m).padStart(2, '0')} ${ampm}`;
+}
+
 const getMins = (t?: string) => {
   if (!t) return 0;
   const [h, m] = t.split(":").map(Number);
@@ -102,7 +111,6 @@ export function DTRTable({
     return Math.min(parseFloat((totalMins / 60).toFixed(2)), 8);
   };
 
-  // --- QUICK ACTION LOGIC ---
   const handleQuickFillRow = (date: string) => {
     setRows(prev => ({
       ...prev,
@@ -177,14 +185,14 @@ export function DTRTable({
 
   return (
     <div className="space-y-4">
-      {/* Action buttons */}
+      {/* Action buttons (Hidden on Print) */}
       {!readOnly && (
         <div className="flex gap-2 justify-end print:hidden flex-wrap">
           <Button variant="secondary" onClick={handleFillAllEmpty} className="gap-2 bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 border-amber-500/20">
             <Zap className="w-4 h-4" /> Auto-Fill Empty Weekdays (8h)
           </Button>
           <Button variant="outline" onClick={() => window.print()} className="gap-2">
-            <Printer className="w-4 h-4" /> Print
+            <Printer className="w-4 h-4" /> Print Document
           </Button>
           <Button onClick={handleSave} disabled={saving} className="gap-2">
             {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="w-4 h-4" />}
@@ -193,8 +201,10 @@ export function DTRTable({
         </div>
       )}
 
-      {/* DTR Form */}
-      <div id="dtr-form" className="bg-white dark:bg-slate-900 border border-border rounded-xl overflow-hidden">
+      {/* ========================================= */}
+      {/* WEB VIEW (Hidden on Print)                */}
+      {/* ========================================= */}
+      <div id="dtr-form-web" className="print:hidden bg-white dark:bg-slate-900 border border-border rounded-xl overflow-hidden">
         {/* Header */}
         <div className="p-4 border-b border-border bg-muted/30">
           <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
@@ -257,7 +267,7 @@ export function DTRTable({
                       <input
                         type="time" value={row[field]}
                         onChange={(e) => update(date, field, e.target.value)}
-                        disabled={weekend && !row[field]} // Allow editing if data already exists on weekend
+                        disabled={weekend && !row[field]}
                         className="w-full text-xs px-0.5 py-1.5 bg-transparent focus:bg-accent rounded font-mono disabled:opacity-40 focus:outline-none focus:ring-1 focus:ring-ring text-center"
                       />
                     </td>
@@ -272,7 +282,6 @@ export function DTRTable({
                         {rec?.isLate && !readOnly && <Badge variant="warning" className="text-[9px] px-1 py-0 h-4">Late</Badge>}
                       </div>
                       
-                      {/* ROW ACTION BUTTONS (Hover Reveal) */}
                       {!readOnly && (
                         <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 ml-2 transition-all">
                           {!weekend && (
@@ -335,7 +344,7 @@ export function DTRTable({
           </table>
         </div>
 
-        {/* --- FULLY UPGRADED 5-COLUMN SUMMARY ROW --- */}
+        {/* Web View Summary Row */}
         <div className="border-t border-border bg-muted/20 px-4 py-4">
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
             <div>
@@ -361,7 +370,7 @@ export function DTRTable({
           </div>
         </div>
 
-        {/* Signatures */}
+        {/* Web View Signatures */}
         <div className="border-t border-border p-4">
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4">Signatures</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
@@ -402,6 +411,115 @@ export function DTRTable({
           </div>
         </div>
       </div>
+
+      {/* ========================================= */}
+      {/* PRINT VIEW (Strict Word Document Layout)    */}
+      {/* ========================================= */}
+      <div id="dtr-print-document" className="hidden print:block w-full bg-white text-black font-sans mx-auto">
+        <h1 className="text-center font-bold text-base mb-6 tracking-wide uppercase">DAILY ATTENDANCE AND ACCOMPLISHMENT FORM</h1>
+        
+        <div className="flex justify-between mb-3 text-sm">
+          <div className="flex items-end">
+            <span className="font-semibold whitespace-nowrap">Student Name:</span>
+            <span className="border-b border-black ml-2 px-4 min-w-[250px] text-center inline-block leading-tight pb-0.5">{userName}</span>
+          </div>
+          <div className="flex items-end">
+            <span className="font-semibold whitespace-nowrap">Internship Site:</span>
+            <span className="border-b border-black ml-2 px-4 min-w-[250px] text-center inline-block leading-tight pb-0.5">{internshipSite || "—"}</span>
+          </div>
+        </div>
+        
+        <div className="mb-4 text-sm flex items-end">
+          <span className="font-semibold whitespace-nowrap">For the Period</span>
+          <span className="border-b border-black ml-2 px-6 min-w-[300px] text-center inline-block leading-tight pb-0.5">{periodTitle}</span>
+        </div>
+
+        <table className="w-full border-collapse border border-black text-[11px] mb-3 text-center">
+          <thead>
+            <tr>
+              <th className="border border-black p-1 align-middle font-semibold" rowSpan={2}>Date</th>
+              <th className="border border-black p-1 font-semibold" colSpan={2}>Morning</th>
+              <th className="border border-black p-1 font-semibold" colSpan={2}>Afternoon</th>
+              <th className="border border-black p-1 font-semibold" colSpan={2}>Overtime</th>
+              <th className="border border-black p-1 align-middle font-semibold" rowSpan={2}>Accomplishment/s</th>
+              <th className="border border-black p-1 align-middle font-semibold w-12" rowSpan={2}>Total Hours</th>
+              <th className="border border-black p-1 align-middle font-semibold" rowSpan={2}>Verified By</th>
+            </tr>
+            <tr>
+              <th className="border border-black p-1 font-medium">IN</th>
+              <th className="border border-black p-1 font-medium">OUT</th>
+              <th className="border border-black p-1 font-medium">IN</th>
+              <th className="border border-black p-1 font-medium">OUT</th>
+              <th className="border border-black p-1 font-medium">IN</th>
+              <th className="border border-black p-1 font-medium">OUT</th>
+            </tr>
+          </thead>
+          <tbody>
+            {days.map((date) => {
+              const row = rows[date];
+              const parsedDate = parseISO(date);
+              const dateLabel = format(parsedDate, "MM/dd/yyyy");
+              const hours = calcRowHours(row);
+              
+              return (
+                <tr key={`print-${date}`}>
+                  <td className="border border-black p-1 text-left whitespace-nowrap">{dateLabel}</td>
+                  <td className="border border-black p-1">{formatPrintTime(row.morningIn)}</td>
+                  <td className="border border-black p-1">{formatPrintTime(row.morningOut)}</td>
+                  <td className="border border-black p-1">{formatPrintTime(row.afternoonIn)}</td>
+                  <td className="border border-black p-1">{formatPrintTime(row.afternoonOut)}</td>
+                  <td className="border border-black p-1">{formatPrintTime(row.overtimeIn)}</td>
+                  <td className="border border-black p-1">{formatPrintTime(row.overtimeOut)}</td>
+                  <td className="border border-black p-1 text-left max-w-[180px] break-words leading-tight">{row.accomplishments}</td>
+                  <td className="border border-black p-1 font-semibold">{hours > 0 ? hours.toFixed(2) : ""}</td>
+                  <td className="border border-black p-1">{row.verifiedBy}</td>
+                </tr>
+              );
+            })}
+            
+            {/* Summary Rows strictly matching the Word Document */}
+            <tr className="font-bold">
+              <td colSpan={8} className="border border-black p-1.5 text-right tracking-widest uppercase">Total Hours:</td>
+              <td className="border border-black p-1.5">{totalHoursThisForm.toFixed(2)}</td>
+              <td className="border border-black p-1.5"></td>
+            </tr>
+            <tr className="font-bold text-[11px]">
+              <td colSpan={4} className="border border-black p-1.5 text-left">
+                Previous Hours Worked: <span className="ml-1 font-normal">{previousHours.toFixed(2)}</span>
+              </td>
+              <td colSpan={3} className="border border-black p-1.5 text-left">
+                Total Hours Worked: <span className="ml-1 font-normal">{totalWorked.toFixed(2)}</span>
+              </td>
+              <td colSpan={3} className="border border-black p-1.5 text-left">
+                Remaining Hours: <span className="ml-1 font-normal">{remaining.toFixed(2)}</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <p className="text-[11px] text-justify mb-8 leading-relaxed font-medium">
+          I CERTIFY on my honor that the above is a true and correct report of the hours of work performed, 
+          record of which was made daily at the time of arrival at and departure from office.
+        </p>
+
+        <div className="flex justify-between items-start pt-2 px-6 text-sm">
+           <div className="flex flex-col items-center">
+              <div className="border-b border-black w-64 text-center pb-0.5 h-6 font-semibold flex items-end justify-center">
+                {supervisorSig}
+              </div>
+              <p className="mt-1 font-semibold">Company Supervisor's Signature</p>
+              <p className="text-xs">Over printed name / Date</p>
+           </div>
+           <div className="flex flex-col items-center">
+              <div className="border-b border-black w-64 text-center pb-0.5 h-6 font-semibold flex items-end justify-center">
+                {studentSig}
+              </div>
+              <p className="mt-1 font-semibold">Student Intern's Signature</p>
+              <p className="text-xs">Date</p>
+           </div>
+        </div>
+      </div>
+
     </div>
   );
 }
