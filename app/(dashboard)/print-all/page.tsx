@@ -2,10 +2,8 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { getYearToDateRecords } from "@/actions/dtr-actions";
 import { parseISO, format } from "date-fns";
-import { Button } from "@/components/ui/button";
-import { Printer } from "lucide-react";
+import { PrintButton } from "@/components/print-button";
 
-// 1. Define the TypeScript interface for your records
 interface DTRRecord {
   date: string;
   morningIn?: string;
@@ -13,10 +11,9 @@ interface DTRRecord {
   afternoonIn?: string;
   afternoonOut?: string;
   totalHours?: number;
-  [key: string]: any; // Allow other properties
+  [key: string]: any; 
 }
 
-// 2. Apply the interface to the helper function
 function groupByMonth(records: DTRRecord[]) {
   return records.reduce((acc, record) => {
     const month = format(parseISO(record.date), "MMMM yyyy");
@@ -41,15 +38,12 @@ export default async function PrintAllPage() {
           <h1 className="text-2xl font-bold">Batch Print DTR</h1>
           <p className="text-muted-foreground">January to Current Date</p>
         </div>
-        <Button onClick={() => typeof window !== 'undefined' && window.print()}>
-          <Printer className="w-4 h-4 mr-2" />
-          Print to PDF
-        </Button>
+        {/* Render the Client Component here */}
+        <PrintButton />
       </div>
 
       {/* Printable Forms Loop */}
       <div className="print-container">
-        {/* 3. Explicitly type [string, DTRRecord[]] here to fix the "unknown" error */}
         {Object.entries(groupedRecords).map(([month, monthRecords]: [string, DTRRecord[]]) => (
           <div key={month} className="page-break w-full mb-12">
             <div id="dtr-form" className="p-4">
