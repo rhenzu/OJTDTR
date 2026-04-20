@@ -5,14 +5,25 @@ import { parseISO, format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Printer } from "lucide-react";
 
-// Helper function to group records by month
-function groupByMonth(records: any[]) {
+// 1. Define the TypeScript interface for your records
+interface DTRRecord {
+  date: string;
+  morningIn?: string;
+  morningOut?: string;
+  afternoonIn?: string;
+  afternoonOut?: string;
+  totalHours?: number;
+  [key: string]: any; // Allow other properties
+}
+
+// 2. Apply the interface to the helper function
+function groupByMonth(records: DTRRecord[]) {
   return records.reduce((acc, record) => {
     const month = format(parseISO(record.date), "MMMM yyyy");
     if (!acc[month]) acc[month] = [];
     acc[month].push(record);
     return acc;
-  }, {} as Record<string, any[]>);
+  }, {} as Record<string, DTRRecord[]>);
 }
 
 export default async function PrintAllPage() {
@@ -38,11 +49,9 @@ export default async function PrintAllPage() {
 
       {/* Printable Forms Loop */}
       <div className="print-container">
-        {Object.entries(groupedRecords).map(([month, monthRecords]) => (
+        {/* 3. Explicitly type [string, DTRRecord[]] here to fix the "unknown" error */}
+        {Object.entries(groupedRecords).map(([month, monthRecords]: [string, DTRRecord[]]) => (
           <div key={month} className="page-break w-full mb-12">
-            {/* Replace the div below with your actual DTR Form component/layout.
-              It will be styled by the #dtr-form rule in your globals.css
-            */}
             <div id="dtr-form" className="p-4">
               <h2 className="text-center font-bold text-xl uppercase mb-1">
                 Daily Time Record
@@ -69,7 +78,6 @@ export default async function PrintAllPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {/* Assuming 31 days max per month */}
                   {Array.from({ length: 31 }, (_, i) => {
                     const day = i + 1;
                     const record = monthRecords.find(r => parseISO(r.date).getDate() === day);
