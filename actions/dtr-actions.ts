@@ -45,6 +45,21 @@ export async function getUserExtraHours(userId: string) {
   return (user as { extraHours?: number } | null)?.extraHours || 0;
 }
 
+export async function getYearToDateRecords(userId: string) {
+  await dbConnect();
+  
+  const currentYear = new Date().getFullYear();
+  const startDate = `${currentYear}-01-01`;
+  const endDate = getTodayString(); // Using your existing utility
+
+  const records = await DailyRecordModel.find({
+    userId,
+    date: { $gte: startDate, $lte: endDate }
+  }).sort({ date: 1 }).lean(); // Sort chronologically
+
+  return JSON.parse(JSON.stringify(records));
+}
+
 export async function updateExtraHours(userId: string, extraHours: number) {
   await dbConnect();
   await UserModel.findByIdAndUpdate(userId, { extraHours });
