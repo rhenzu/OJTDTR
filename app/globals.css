@@ -60,6 +60,11 @@
   body { background: white !important; color: black !important; }
   #dtr-form { border: 1px solid #ccc !important; }
   #dtr-form table td, #dtr-form table th { border: 1px solid #999 !important; }
+  
+  /* Add these new rules for batch printing */
+  .page-break { page-break-after: always; }
+  .page-break:last-child { page-break-after: auto; }
+  @page { margin: 0.5in; } /* Optional: standardizes PDF margins */
 }
 
 /* Scrollbar */
