@@ -489,21 +489,26 @@ export function DTRTable({
         {/* Period — 2-column layout matching Student Name / Internship Site row above */}
         <div className="flex justify-between mb-4 text-sm">
           <div className="flex items-end">
-            <span className="font-semibold whitespace-nowrap">For the Period:</span>
+            <span className="font-semibold whitespace-nowrap" style={{ marginBottom: "13px" }}>For the Period:</span>
             <div className="ml-2 flex flex-col items-center">
               <span className="border-b border-black px-4 min-w-[220px] text-center inline-block leading-tight pb-0.5">
                 {format(parseISO(days[0]), "MMMM d, yyyy")}
               </span>
-              <span style={{ fontSize: "8px", letterSpacing: "0.04em", marginTop: "1px" }} className="text-black">
+              <span style={{ fontSize: "8px", letterSpacing: "0.04em", marginTop: "2px" }} className="text-black">
                 Beginning Date
               </span>
             </div>
           </div>
           <div className="flex items-end">
-            <span className="font-semibold whitespace-nowrap">To:</span>
-            <span className="border-b border-black ml-2 px-4 min-w-[220px] text-center inline-block leading-tight pb-0.5">
-              {format(parseISO(days[days.length - 1]), "MMMM d, yyyy")}
-            </span>
+            <span className="font-semibold whitespace-nowrap" style={{ marginBottom: "13px" }}>To:</span>
+            <div className="ml-2 flex flex-col items-center">
+              <span className="border-b border-black px-4 min-w-[220px] text-center inline-block leading-tight pb-0.5">
+                {format(parseISO(days[days.length - 1]), "MMMM d, yyyy")}
+              </span>
+              <span style={{ fontSize: "8px", letterSpacing: "0.04em", marginTop: "2px" }} className="text-black">
+                Ending Date
+              </span>
+            </div>
           </div>
         </div>
 
@@ -511,21 +516,19 @@ export function DTRTable({
         <table className="w-full border-collapse border border-black text-[11px] mb-3 text-center">
           <thead>
             <tr>
-              <th className="border border-black p-1 align-middle font-semibold" rowSpan={2}>Date</th>
-              <th className="border border-black p-1 font-semibold" colSpan={2}>Morning<br /><span className="font-normal text-[10px]">IN / OUT</span></th>
-              <th className="border border-black p-1 font-semibold" colSpan={2}>Afternoon<br /><span className="font-normal text-[10px]">IN / OUT</span></th>
-              <th className="border border-black p-1 font-semibold" colSpan={2}>Overtime<br /><span className="font-normal text-[10px]">IN / OUT</span></th>
-              <th className="border border-black p-1 align-middle font-semibold" rowSpan={2} style={{ width: "28%" }}>Accomplishment/s</th>
-              <th className="border border-black p-1 align-middle font-semibold" rowSpan={2} style={{ width: "7%" }}>Total Hours</th>
-              <th className="border border-black p-1 align-middle font-semibold" rowSpan={2} style={{ width: "10%" }}>Verified By</th>
-            </tr>
-            <tr>
-              <th className="border border-black p-1 font-medium">IN</th>
-              <th className="border border-black p-1 font-medium">OUT</th>
-              <th className="border border-black p-1 font-medium">IN</th>
-              <th className="border border-black p-1 font-medium">OUT</th>
-              <th className="border border-black p-1 font-medium">IN</th>
-              <th className="border border-black p-1 font-medium">OUT</th>
+              <th className="border border-black p-1 align-middle font-semibold">Date</th>
+              <th className="border border-black p-1 font-semibold" colSpan={2}>
+                Morning<br /><span className="font-normal text-[9px]">IN / OUT</span>
+              </th>
+              <th className="border border-black p-1 font-semibold" colSpan={2}>
+                Afternoon<br /><span className="font-normal text-[9px]">IN / OUT</span>
+              </th>
+              <th className="border border-black p-1 font-semibold" colSpan={2}>
+                Overtime<br /><span className="font-normal text-[9px]">IN / OUT</span>
+              </th>
+              <th className="border border-black p-1 align-middle font-semibold" style={{ width: "28%" }}>Accomplishment/s</th>
+              <th className="border border-black p-1 align-middle font-semibold" style={{ width: "7%" }}>Total Hours</th>
+              <th className="border border-black p-1 align-middle font-semibold" style={{ width: "10%" }}>Verified By</th>
             </tr>
           </thead>
           <tbody>
