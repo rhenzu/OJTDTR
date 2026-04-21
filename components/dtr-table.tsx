@@ -600,16 +600,25 @@ export function DTRTable({
               <td className="border border-black p-1.5"></td>
             </tr>
 
-            {/* Previous / Total / Remaining summary row */}
+            {/* Previous / Total / Remaining summary row — 6 cells: label | value × 3 */}
             <tr>
-              <td colSpan={4} className="border border-black p-1.5 text-left font-bold">
-                Previous Hours Worked: <span className="font-normal">{previousHours.toFixed(2)}</span>
+              <td colSpan={2} className="border border-black p-1.5 text-right font-bold whitespace-nowrap">
+                Previous Hours Worked:
               </td>
-              <td colSpan={3} className="border border-black p-1.5 text-left font-bold">
-                Total Hours Worked: <span className="font-normal">{totalWorked.toFixed(2)}</span>
+              <td colSpan={1} className="border border-black p-1.5 text-center font-normal">
+                {previousHours.toFixed(2)}
               </td>
-              <td colSpan={3} className="border border-black p-1.5 text-left font-bold">
-                Remaining Hours: <span className="font-normal">{remaining.toFixed(2)}</span>
+              <td colSpan={2} className="border border-black p-1.5 text-right font-bold whitespace-nowrap">
+                Total Hours Worked:
+              </td>
+              <td colSpan={2} className="border border-black p-1.5 text-center font-normal">
+                {totalWorked.toFixed(2)}
+              </td>
+              <td colSpan={2} className="border border-black p-1.5 text-right font-bold whitespace-nowrap">
+                Remaining Hours:
+              </td>
+              <td colSpan={1} className="border border-black p-1.5 text-center font-normal">
+                {remaining.toFixed(2)}
               </td>
             </tr>
           </tbody>
