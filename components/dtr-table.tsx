@@ -44,6 +44,15 @@ function formatPrintTime(time24?: string): string {
   return `${String(dh).padStart(2, '0')}:${String(m).padStart(2, '0')} ${ampm}`;
 }
 
+// Shrinks font for longer accomplishment text so it fits the fixed-height cell
+function accFontSize(text: string): string {
+  const len = text.length;
+  if (len > 120) return "7px";
+  if (len > 80)  return "8px";
+  if (len > 40)  return "9px";
+  return "10px";
+}
+
 const getMins = (t?: string) => {
   if (!t) return 0;
   const [h, m] = t.split(":").map(Number);
@@ -481,9 +490,14 @@ export function DTRTable({
         <div className="flex justify-between mb-4 text-sm">
           <div className="flex items-end">
             <span className="font-semibold whitespace-nowrap">For the Period:</span>
-            <span className="border-b border-black ml-2 px-4 min-w-[220px] text-center inline-block leading-tight pb-0.5">
-              {format(parseISO(days[0]), "MMMM d, yyyy")}
-            </span>
+            <div className="ml-2 flex flex-col items-center">
+              <span className="border-b border-black px-4 min-w-[220px] text-center inline-block leading-tight pb-0.5">
+                {format(parseISO(days[0]), "MMMM d, yyyy")}
+              </span>
+              <span style={{ fontSize: "8px", letterSpacing: "0.04em", marginTop: "1px" }} className="text-black">
+                Beginning Date
+              </span>
+            </div>
           </div>
           <div className="flex items-end">
             <span className="font-semibold whitespace-nowrap">To:</span>
@@ -534,27 +548,30 @@ export function DTRTable({
               const dash = "———";
 
               return (
-                <tr key={`print-${date}`} style={{ height: "22px" }}>
-                  <td className="border border-black p-1 text-left whitespace-nowrap">{dateLabel}</td>
-                  <td className="border border-black p-1">{showDashes ? dash : formatPrintTime(row.morningIn)}</td>
-                  <td className="border border-black p-1">{showDashes ? dash : formatPrintTime(row.morningOut)}</td>
-                  <td className="border border-black p-1">{showDashes ? dash : formatPrintTime(row.afternoonIn)}</td>
-                  <td className="border border-black p-1">{showDashes ? dash : formatPrintTime(row.afternoonOut)}</td>
-                  <td className="border border-black p-1">{showDashes ? dash : formatPrintTime(row.overtimeIn)}</td>
-                  <td className="border border-black p-1">{showDashes ? dash : formatPrintTime(row.overtimeOut)}</td>
-                  <td className="border border-black p-1 text-left max-w-[180px] break-words leading-tight">
+                <tr key={`print-${date}`} style={{ height: "26px", maxHeight: "26px" }}>
+                  <td className="border border-black p-1 text-left whitespace-nowrap" style={{ overflow: "hidden" }}>{dateLabel}</td>
+                  <td className="border border-black p-1" style={{ overflow: "hidden" }}>{showDashes ? dash : formatPrintTime(row.morningIn)}</td>
+                  <td className="border border-black p-1" style={{ overflow: "hidden" }}>{showDashes ? dash : formatPrintTime(row.morningOut)}</td>
+                  <td className="border border-black p-1" style={{ overflow: "hidden" }}>{showDashes ? dash : formatPrintTime(row.afternoonIn)}</td>
+                  <td className="border border-black p-1" style={{ overflow: "hidden" }}>{showDashes ? dash : formatPrintTime(row.afternoonOut)}</td>
+                  <td className="border border-black p-1" style={{ overflow: "hidden" }}>{showDashes ? dash : formatPrintTime(row.overtimeIn)}</td>
+                  <td className="border border-black p-1" style={{ overflow: "hidden" }}>{showDashes ? dash : formatPrintTime(row.overtimeOut)}</td>
+                  <td
+                    className="border border-black p-1 text-left leading-tight"
+                    style={{ overflow: "hidden", fontSize: accFontSize(accomplishmentLabel), whiteSpace: "nowrap" }}
+                  >
                     {accomplishmentLabel}
                   </td>
-                  <td className="border border-black p-1 font-semibold">
+                  <td className="border border-black p-1 font-semibold" style={{ overflow: "hidden" }}>
                     {hours > 0 ? hours.toFixed(2) : ""}
                   </td>
-                  <td className="border border-black p-1">{row.verifiedBy}</td>
+                  <td className="border border-black p-1" style={{ overflow: "hidden" }}>{row.verifiedBy}</td>
                 </tr>
               );
             })}
 
             {Array.from({ length: blankPrintRows }).map((_, i) => (
-              <tr key={`blank-${i}`} style={{ height: "22px" }}>
+              <tr key={`blank-${i}`} style={{ height: "26px", maxHeight: "26px" }}>
                 <td className="border border-black p-1">&nbsp;</td>
                 <td className="border border-black p-1"></td>
                 <td className="border border-black p-1"></td>
