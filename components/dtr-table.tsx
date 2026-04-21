@@ -463,15 +463,19 @@ export function DTRTable({
       {/* ========================================= */}
       <div
         id="dtr-print-document"
-        className="hidden print:block w-full bg-white text-black font-sans mx-auto"
-        style={{ padding: "15mm 15mm 12mm" }}
+        className="hidden print:block w-full bg-white text-black mx-auto"
+        style={{ padding: "15mm 15mm 12mm", fontFamily: "'Century Gothic', CenturyGothic, AppleGothic, sans-serif" }}
       >
-        <h1 className="text-center font-bold text-base mb-6 tracking-wide uppercase">
+        {/* Title */}
+        <h1
+          className="text-center font-bold mb-6 tracking-wide uppercase"
+          style={{ fontSize: "12pt", fontFamily: "'Century Gothic', CenturyGothic, AppleGothic, sans-serif" }}
+        >
           DAILY ATTENDANCE AND ACCOMPLISHMENT FORM
         </h1>
 
         {/* Student Name / Internship Site */}
-        <div className="flex justify-between mb-3 text-sm">
+        <div className="flex justify-between mb-3" style={{ fontSize: "10pt", fontFamily: "'Century Gothic', CenturyGothic, AppleGothic, sans-serif" }}>
           <div className="flex items-end">
             <span className="font-semibold whitespace-nowrap">Student Name:</span>
             <span className="border-b border-black ml-2 px-4 min-w-[220px] text-center inline-block leading-tight pb-0.5">
@@ -486,15 +490,15 @@ export function DTRTable({
           </div>
         </div>
 
-        {/* Period — 2-column layout matching Student Name / Internship Site row above */}
-        <div className="flex justify-between mb-4 text-sm">
+        {/* Period */}
+        <div className="flex justify-between mb-4" style={{ fontSize: "10pt", fontFamily: "'Century Gothic', CenturyGothic, AppleGothic, sans-serif" }}>
           <div className="flex items-end">
             <span className="font-semibold whitespace-nowrap" style={{ marginBottom: "13px" }}>For the Period:</span>
             <div className="ml-2 flex flex-col items-center">
               <span className="border-b border-black px-4 min-w-[220px] text-center inline-block leading-tight pb-0.5">
                 {format(parseISO(days[0]), "MMMM d, yyyy")}
               </span>
-              <span style={{ fontSize: "8px", letterSpacing: "0.04em", marginTop: "2px" }} className="text-black">
+              <span style={{ fontSize: "8pt", letterSpacing: "0.04em", marginTop: "2px" }}>
                 Beginning Date
               </span>
             </div>
@@ -505,7 +509,7 @@ export function DTRTable({
               <span className="border-b border-black px-4 min-w-[220px] text-center inline-block leading-tight pb-0.5">
                 {format(parseISO(days[days.length - 1]), "MMMM d, yyyy")}
               </span>
-              <span style={{ fontSize: "8px", letterSpacing: "0.04em", marginTop: "2px" }} className="text-black">
+              <span style={{ fontSize: "8pt", letterSpacing: "0.04em", marginTop: "2px" }}>
                 Ending Date
               </span>
             </div>
@@ -513,22 +517,25 @@ export function DTRTable({
         </div>
 
         {/* ─── Main table ─── */}
-        <table className="w-full border-collapse border border-black text-[11px] mb-3 text-center">
+        <table
+          className="w-full border-collapse border border-black mb-3 text-center"
+          style={{ fontSize: "8pt", fontFamily: "'Century Gothic', CenturyGothic, AppleGothic, sans-serif" }}
+        >
           <thead>
             <tr>
-              <th className="border border-black p-1 align-middle font-semibold">Date</th>
-              <th className="border border-black p-1 font-semibold" colSpan={2}>
-                Morning<br /><span className="font-normal text-[9px]">IN / OUT</span>
+              <th className="border border-black p-1 align-middle font-bold">Date</th>
+              <th className="border border-black p-1 font-bold" colSpan={2}>
+                Morning<br /><span className="font-bold" style={{ fontSize: "7pt" }}>IN / OUT</span>
               </th>
-              <th className="border border-black p-1 font-semibold" colSpan={2}>
-                Afternoon<br /><span className="font-normal text-[9px]">IN / OUT</span>
+              <th className="border border-black p-1 font-bold" colSpan={2}>
+                Afternoon<br /><span className="font-bold" style={{ fontSize: "7pt" }}>IN / OUT</span>
               </th>
-              <th className="border border-black p-1 font-semibold" colSpan={2}>
-                Overtime<br /><span className="font-normal text-[9px]">IN / OUT</span>
+              <th className="border border-black p-1 font-bold" colSpan={2}>
+                Overtime<br /><span className="font-bold" style={{ fontSize: "7pt" }}>IN / OUT</span>
               </th>
-              <th className="border border-black p-1 align-middle font-semibold" style={{ width: "28%" }}>Accomplishment/s</th>
-              <th className="border border-black p-1 align-middle font-semibold" style={{ width: "7%" }}>Total Hours</th>
-              <th className="border border-black p-1 align-middle font-semibold" style={{ width: "10%" }}>Verified By</th>
+              <th className="border border-black p-1 align-middle font-bold" style={{ width: "28%" }}>Accomplishment/s</th>
+              <th className="border border-black p-1 align-middle font-bold" style={{ width: "7%" }}>Total Hours</th>
+              <th className="border border-black p-1 align-middle font-bold" style={{ width: "10%" }}>Verified By</th>
             </tr>
           </thead>
           <tbody>
@@ -541,13 +548,8 @@ export function DTRTable({
               const dayName = format(parsedDate, "EEEE");
 
               const hasNoTimes = !row.morningIn && !row.morningOut && !row.afternoonIn && !row.afternoonOut && !row.overtimeIn && !row.overtimeOut;
-
               const showDashes = weekend || (hasNoTimes && row.accomplishments);
-
-              const accomplishmentLabel = weekend
-                ? dayName
-                : row.accomplishments || "";
-
+              const accomplishmentLabel = weekend ? dayName : row.accomplishments || "";
               const dash = "———";
 
               return (
@@ -589,56 +591,50 @@ export function DTRTable({
             ))}
 
             {/* TOTAL HOURS row */}
-            <tr className="font-bold">
-              <td colSpan={8} className="border border-black p-1.5 text-right tracking-widest uppercase">
+            <tr>
+              <td colSpan={8} className="border border-black p-1.5 text-right font-bold tracking-widest uppercase">
                 TOTAL HOURS:
               </td>
-              <td className="border border-black p-1.5">{totalHoursThisForm.toFixed(2)}</td>
+              <td className="border border-black p-1.5 font-bold">{totalHoursThisForm.toFixed(2)}</td>
               <td className="border border-black p-1.5"></td>
             </tr>
 
             {/* Previous / Total / Remaining summary row */}
-            <tr className="font-bold text-[11px]">
-              <td colSpan={4} className="border border-black p-1.5 text-left">
-                Previous Hours Worked:{" "}
-                <span className="ml-1 font-normal">{previousHours.toFixed(2)}</span>
+            <tr>
+              <td colSpan={4} className="border border-black p-1.5 text-left font-bold">
+                Previous Hours Worked: <span className="font-normal">{previousHours.toFixed(2)}</span>
               </td>
-              <td colSpan={3} className="border border-black p-1.5 text-left">
-                Total Hours Worked:{" "}
-                <span className="ml-1 font-normal">{totalWorked.toFixed(2)}</span>
+              <td colSpan={3} className="border border-black p-1.5 text-left font-bold">
+                Total Hours Worked: <span className="font-normal">{totalWorked.toFixed(2)}</span>
               </td>
-              <td colSpan={3} className="border border-black p-1.5 text-left">
-                Remaining Hours:{" "}
-                <span className="ml-1 font-normal">{remaining.toFixed(2)}</span>
+              <td colSpan={3} className="border border-black p-1.5 text-left font-bold">
+                Remaining Hours: <span className="font-normal">{remaining.toFixed(2)}</span>
               </td>
             </tr>
           </tbody>
         </table>
 
-        {/* Certification text */}
-        <p className="text-[11px] text-justify mb-6 leading-relaxed">
+        {/* Certification text — Candara 10pt with first-line indent */}
+        <p
+          className="text-justify mb-6 leading-relaxed"
+          style={{ fontSize: "10pt", fontFamily: "'Candara', Candara, Calibri, sans-serif", textIndent: "2em" }}
+        >
           I CERTIFY on my honor that the above is a true and correct report of the hours of work performed,
           record of which was made daily at the time of arrival at and departure from office.
         </p>
 
-        {/* Signature section */}
-        <div className="text-[11px] space-y-5">
+        {/* Signature section — Century Gothic 10pt */}
+        <div style={{ fontSize: "10pt", fontFamily: "'Century Gothic', CenturyGothic, AppleGothic, sans-serif" }} className="space-y-5">
 
           {/* Supervisor row */}
           <div>
             <div className="flex items-end gap-4">
-              <div
-                className="border-b border-black pb-0.5 flex items-end"
-                style={{ minWidth: "260px", flex: "1" }}
-              >
+              <div className="border-b border-black pb-0.5 flex items-end" style={{ minWidth: "260px", flex: "1" }}>
                 <span>{supervisorSig}</span>
               </div>
               <div className="flex items-end gap-2 whitespace-nowrap">
                 <span className="font-semibold">Date</span>
-                <div
-                  className="border-b border-black pb-0.5 flex items-end"
-                  style={{ minWidth: "120px" }}
-                >
+                <div className="border-b border-black pb-0.5 flex items-end" style={{ minWidth: "120px" }}>
                   <span>{formatSignatureDate(supervisorDate)}</span>
                 </div>
               </div>
@@ -649,18 +645,12 @@ export function DTRTable({
           {/* Student row */}
           <div>
             <div className="flex items-end gap-4">
-              <div
-                className="border-b border-black pb-0.5 flex items-end"
-                style={{ minWidth: "260px", flex: "1" }}
-              >
+              <div className="border-b border-black pb-0.5 flex items-end" style={{ minWidth: "260px", flex: "1" }}>
                 <span>{studentSig}</span>
               </div>
               <div className="flex items-end gap-2 whitespace-nowrap">
                 <span className="font-semibold">Date</span>
-                <div
-                  className="border-b border-black pb-0.5 flex items-end"
-                  style={{ minWidth: "120px" }}
-                >
+                <div className="border-b border-black pb-0.5 flex items-end" style={{ minWidth: "120px" }}>
                   <span>{formatSignatureDate(studentDate)}</span>
                 </div>
               </div>
