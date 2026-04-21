@@ -555,12 +555,13 @@ export function DTRTable({
               return (
                 <tr key={`print-${date}`}>
                   <td className="border border-black p-1 text-left whitespace-nowrap">{dateLabel}</td>
-                  <td className="border border-black p-1">{showDashes ? dash : formatPrintTime(row.morningIn)}</td>
-                  <td className="border border-black p-1">{showDashes ? dash : formatPrintTime(row.morningOut)}</td>
-                  <td className="border border-black p-1">{showDashes ? dash : formatPrintTime(row.afternoonIn)}</td>
-                  <td className="border border-black p-1">{showDashes ? dash : formatPrintTime(row.afternoonOut)}</td>
-                  <td className="border border-black p-1">{showDashes ? dash : formatPrintTime(row.overtimeIn)}</td>
-                  <td className="border border-black p-1">{showDashes ? dash : formatPrintTime(row.overtimeOut)}</td>
+                  {/* ↓ whitespace-nowrap prevents "07:46\nAM" wrapping in narrow columns */}
+                  <td className="border border-black p-1 whitespace-nowrap">{showDashes ? dash : formatPrintTime(row.morningIn)}</td>
+                  <td className="border border-black p-1 whitespace-nowrap">{showDashes ? dash : formatPrintTime(row.morningOut)}</td>
+                  <td className="border border-black p-1 whitespace-nowrap">{showDashes ? dash : formatPrintTime(row.afternoonIn)}</td>
+                  <td className="border border-black p-1 whitespace-nowrap">{showDashes ? dash : formatPrintTime(row.afternoonOut)}</td>
+                  <td className="border border-black p-1 whitespace-nowrap">{showDashes ? dash : formatPrintTime(row.overtimeIn)}</td>
+                  <td className="border border-black p-1 whitespace-nowrap">{showDashes ? dash : formatPrintTime(row.overtimeOut)}</td>
                   <td
                     className="border border-black text-left break-words leading-tight"
                     style={{ fontSize: accFontSize(accomplishmentLabel), padding: "1px 3px" }}
