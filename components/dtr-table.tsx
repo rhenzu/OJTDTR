@@ -452,11 +452,6 @@ export function DTRTable({
       {/* ========================================= */}
       {/* PRINT VIEW (Strict Word Document Layout)  */}
       {/* ========================================= */}
-      {/*
-        FIX 1: @page { margin: 0 } (injected above) removes the browser's URL /
-        title strip. We compensate with padding-[15mm] on this div so content
-        isn't flush with the paper edge.
-      */}
       <div
         id="dtr-print-document"
         className="hidden print:block w-full bg-white text-black font-sans mx-auto"
@@ -482,12 +477,20 @@ export function DTRTable({
           </div>
         </div>
 
-        {/* Period */}
-        <div className="mb-4 text-sm flex items-end">
-          <span className="font-semibold whitespace-nowrap">For the Period</span>
-          <span className="border-b border-black ml-2 px-6 min-w-[280px] text-center inline-block leading-tight pb-0.5">
-            {periodTitle}
-          </span>
+        {/* Period — 2-column layout matching Student Name / Internship Site row above */}
+        <div className="flex justify-between mb-4 text-sm">
+          <div className="flex items-end">
+            <span className="font-semibold whitespace-nowrap">For the Period:</span>
+            <span className="border-b border-black ml-2 px-4 min-w-[220px] text-center inline-block leading-tight pb-0.5">
+              {format(parseISO(days[0]), "MMMM d, yyyy")}
+            </span>
+          </div>
+          <div className="flex items-end">
+            <span className="font-semibold whitespace-nowrap">To:</span>
+            <span className="border-b border-black ml-2 px-4 min-w-[220px] text-center inline-block leading-tight pb-0.5">
+              {format(parseISO(days[days.length - 1]), "MMMM d, yyyy")}
+            </span>
+          </div>
         </div>
 
         {/* ─── Main table ─── */}
@@ -512,49 +515,44 @@ export function DTRTable({
             </tr>
           </thead>
           <tbody>
-            {/* ─── FIX 2: actual data rows ─── */}
             {days.map((date) => {
-  const row = rows[date];
-  const parsedDate = parseISO(date);
-  const dateLabel = format(parsedDate, "MM/dd/yyyy");
-  const hours = calcRowHours(row);
-  const weekend = isWeekend(parsedDate);
-  const dayName = format(parsedDate, "EEEE"); // "Saturday" / "Sunday"
+              const row = rows[date];
+              const parsedDate = parseISO(date);
+              const dateLabel = format(parsedDate, "MM/dd/yyyy");
+              const hours = calcRowHours(row);
+              const weekend = isWeekend(parsedDate);
+              const dayName = format(parsedDate, "EEEE");
 
-  const hasNoTimes = !row.morningIn && !row.morningOut && !row.afternoonIn && !row.afternoonOut && !row.overtimeIn && !row.overtimeOut;
-  const isHoliday = row.accomplishments?.toLowerCase() === "holiday";
+              const hasNoTimes = !row.morningIn && !row.morningOut && !row.afternoonIn && !row.afternoonOut && !row.overtimeIn && !row.overtimeOut;
 
-  // Show dashes in time cells when: weekend, or holiday with no times, or any row with accomplishment but no times
-  const showDashes = weekend || (hasNoTimes && row.accomplishments);
+              const showDashes = weekend || (hasNoTimes && row.accomplishments);
 
-  // What to show in the accomplishments column
-  const accomplishmentLabel = weekend
-    ? dayName                          // "Saturday" / "Sunday"
-    : row.accomplishments || "";
+              const accomplishmentLabel = weekend
+                ? dayName
+                : row.accomplishments || "";
 
-  const dash = "———";
+              const dash = "———";
 
-  return (
-    <tr key={`print-${date}`} style={{ height: "22px" }}>
-      <td className="border border-black p-1 text-left whitespace-nowrap">{dateLabel}</td>
-      <td className="border border-black p-1">{showDashes ? dash : formatPrintTime(row.morningIn)}</td>
-      <td className="border border-black p-1">{showDashes ? dash : formatPrintTime(row.morningOut)}</td>
-      <td className="border border-black p-1">{showDashes ? dash : formatPrintTime(row.afternoonIn)}</td>
-      <td className="border border-black p-1">{showDashes ? dash : formatPrintTime(row.afternoonOut)}</td>
-      <td className="border border-black p-1">{showDashes ? dash : formatPrintTime(row.overtimeIn)}</td>
-      <td className="border border-black p-1">{showDashes ? dash : formatPrintTime(row.overtimeOut)}</td>
-      <td className="border border-black p-1 text-left max-w-[180px] break-words leading-tight">
-        {accomplishmentLabel}
-      </td>
-      <td className="border border-black p-1 font-semibold">
-        {hours > 0 ? hours.toFixed(2) : ""}
-      </td>
-      <td className="border border-black p-1">{row.verifiedBy}</td>
-    </tr>
-  );
-})}
+              return (
+                <tr key={`print-${date}`} style={{ height: "22px" }}>
+                  <td className="border border-black p-1 text-left whitespace-nowrap">{dateLabel}</td>
+                  <td className="border border-black p-1">{showDashes ? dash : formatPrintTime(row.morningIn)}</td>
+                  <td className="border border-black p-1">{showDashes ? dash : formatPrintTime(row.morningOut)}</td>
+                  <td className="border border-black p-1">{showDashes ? dash : formatPrintTime(row.afternoonIn)}</td>
+                  <td className="border border-black p-1">{showDashes ? dash : formatPrintTime(row.afternoonOut)}</td>
+                  <td className="border border-black p-1">{showDashes ? dash : formatPrintTime(row.overtimeIn)}</td>
+                  <td className="border border-black p-1">{showDashes ? dash : formatPrintTime(row.overtimeOut)}</td>
+                  <td className="border border-black p-1 text-left max-w-[180px] break-words leading-tight">
+                    {accomplishmentLabel}
+                  </td>
+                  <td className="border border-black p-1 font-semibold">
+                    {hours > 0 ? hours.toFixed(2) : ""}
+                  </td>
+                  <td className="border border-black p-1">{row.verifiedBy}</td>
+                </tr>
+              );
+            })}
 
-            {/* ─── FIX 2: blank padding rows so the table always shows PRINT_ROWS rows ─── */}
             {Array.from({ length: blankPrintRows }).map((_, i) => (
               <tr key={`blank-${i}`} style={{ height: "22px" }}>
                 <td className="border border-black p-1">&nbsp;</td>
@@ -603,19 +601,11 @@ export function DTRTable({
           record of which was made daily at the time of arrival at and departure from office.
         </p>
 
-        {/* ─── FIX 3: Signature section matching the Word document exactly ─────────
-            Layout per Word doc:
-              [long sig line ________________________]   Date [short line _______]
-              Company Supervisor's Signature Over printed name
-
-              [long sig line ________________________]   Date [short line _______]
-              Student Intern's Signature    Date
-        ─────────────────────────────────────────────────────────────────────── */}
+        {/* Signature section */}
         <div className="text-[11px] space-y-5">
 
           {/* Supervisor row */}
           <div>
-            {/* Underlines */}
             <div className="flex items-end gap-4">
               <div
                 className="border-b border-black pb-0.5 flex items-end"
@@ -633,13 +623,11 @@ export function DTRTable({
                 </div>
               </div>
             </div>
-            {/* Label below */}
             <p className="mt-1">Company Supervisor&apos;s Signature Over printed name</p>
           </div>
 
           {/* Student row */}
           <div>
-            {/* Underlines */}
             <div className="flex items-end gap-4">
               <div
                 className="border-b border-black pb-0.5 flex items-end"
@@ -657,7 +645,6 @@ export function DTRTable({
                 </div>
               </div>
             </div>
-            {/* Label below — Word doc shows "Student Intern's Signature    Date" on one line */}
             <p className="mt-1">Student Intern&apos;s Signature</p>
           </div>
 
