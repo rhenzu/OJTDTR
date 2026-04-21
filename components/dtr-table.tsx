@@ -47,10 +47,10 @@ function formatPrintTime(time24?: string): string {
 // Shrinks font for longer accomplishment text so it fits the fixed-height cell
 function accFontSize(text: string): string {
   const len = text.length;
-  if (len > 120) return "7px";
-  if (len > 80)  return "8px";
-  if (len > 40)  return "9px";
-  return "10px";
+  if (len > 160) return "7.5px";
+  if (len > 110) return "8.5px";
+  if (len > 60)  return "9.5px";
+  return "10.5px";
 }
 
 const getMins = (t?: string) => {
@@ -515,9 +515,9 @@ export function DTRTable({
               <th className="border border-black p-1 font-semibold" colSpan={2}>Morning<br /><span className="font-normal text-[10px]">IN / OUT</span></th>
               <th className="border border-black p-1 font-semibold" colSpan={2}>Afternoon<br /><span className="font-normal text-[10px]">IN / OUT</span></th>
               <th className="border border-black p-1 font-semibold" colSpan={2}>Overtime<br /><span className="font-normal text-[10px]">IN / OUT</span></th>
-              <th className="border border-black p-1 align-middle font-semibold" rowSpan={2}>Accomplishment/s</th>
-              <th className="border border-black p-1 align-middle font-semibold w-12" rowSpan={2}>Total Hours</th>
-              <th className="border border-black p-1 align-middle font-semibold" rowSpan={2}>Verified By</th>
+              <th className="border border-black p-1 align-middle font-semibold" rowSpan={2} style={{ width: "28%" }}>Accomplishment/s</th>
+              <th className="border border-black p-1 align-middle font-semibold" rowSpan={2} style={{ width: "7%" }}>Total Hours</th>
+              <th className="border border-black p-1 align-middle font-semibold" rowSpan={2} style={{ width: "10%" }}>Verified By</th>
             </tr>
             <tr>
               <th className="border border-black p-1 font-medium">IN</th>
@@ -557,8 +557,8 @@ export function DTRTable({
                   <td className="border border-black p-1">{showDashes ? dash : formatPrintTime(row.overtimeIn)}</td>
                   <td className="border border-black p-1">{showDashes ? dash : formatPrintTime(row.overtimeOut)}</td>
                   <td
-                    className="border border-black p-1 text-left break-words leading-tight"
-                    style={{ fontSize: accFontSize(accomplishmentLabel) }}
+                    className="border border-black text-left break-words leading-tight"
+                    style={{ fontSize: accFontSize(accomplishmentLabel), padding: "1px 3px" }}
                   >
                     {accomplishmentLabel}
                   </td>
