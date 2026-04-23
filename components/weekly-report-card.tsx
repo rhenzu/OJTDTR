@@ -4,7 +4,8 @@ import { useState } from "react";
 import { format } from "date-fns";
 import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+// Removed DialogFooter from the import below
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { regenerateWeeklyReport } from "@/actions/report-actions";
 
@@ -31,7 +32,7 @@ export function WeeklyReportCard({ report, studentName }: ReportProps) {
     await regenerateWeeklyReport(_id, customPrompt);
     setIsGenerating(false);
     setIsOpen(false);
-    setCustomPrompt(""); // Reset prompt after success
+    setCustomPrompt(""); 
   };
 
   if (!aiData) return <div>Failed to load AI Data for Week {weekNo}</div>;
@@ -63,12 +64,13 @@ export function WeeklyReportCard({ report, studentName }: ReportProps) {
                 rows={4}
               />
             </div>
-            <DialogFooter>
+            {/* Replaced DialogFooter with a standard styled div */}
+            <div className="flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2 mt-2">
               <Button variant="outline" onClick={() => setIsOpen(false)}>Cancel</Button>
               <Button onClick={handleRegenerate} disabled={isGenerating}>
                 {isGenerating ? "Generating..." : "Regenerate Report"}
               </Button>
-            </DialogFooter>
+            </div>
           </DialogContent>
         </Dialog>
       </div>
