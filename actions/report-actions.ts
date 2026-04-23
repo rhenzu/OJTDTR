@@ -9,108 +9,190 @@ import { revalidatePath } from "next/cache";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
-export async function generateWeeklyReports(userId: string) {
+// ─────────────────────────────────────────────────────────────
+// FETCH only — no AI generation. Returns week structure + any
+// already-saved aiData from the DB.
+// ─────────────────────────────────────────────────────────────
+export async function getWeeksData(userId: string) {
   await dbConnect();
-  
+
   const user = await UserModel.findById(userId).lean() as { startDate?: string } | null;
-  if (!user || !user.startDate) throw new Error("User or OJT start date not found");
+  if (!user?.startDate) return [];
 
   const records = await DailyRecordModel.find({
     userId,
     date: { $gte: user.startDate },
-  }).sort({ date: 1 }).lean();
+  })
+    .sort({ date: 1 })
+    .lean();
 
-  const validWorkingDays = records.filter(
-    (r) => r.totalHours && r.totalHours > 0 && r.accomplishments && r.accomplishments.trim() !== ""
+  const validDays = (records as any[]).filter(
+    (r) => r.totalHours > 0 && r.accomplishments?.trim()
   );
 
-  const chunks = [];
-  for (let i = 0; i < validWorkingDays.length; i += 5) {
-    chunks.push(validWorkingDays.slice(i, i + 5));
+  const chunks: any[][] = [];
+  for (let i = 0; i < validDays.length; i += 5) {
+    chunks.push(validDays.slice(i, i + 5));
   }
 
-  const reports = await Promise.all(
-    chunks.map(async (chunk, index) => {
-      const weekNo = index + 1;
-      const startDate = chunk[0].date;
-      const endDate = chunk[chunk.length - 1].date;
-      const isComplete = chunk.length === 5;
-      
-      const rawAccomplishments = chunk
-        .map((r) => `Date: ${r.date} - ${r.accomplishments}`)
-        .join("\n");
+  const existingReports = await WeeklyReportModel.find({ userId }).lean();
+  const reportMap = new Map((existingReports as any[]).map((r) => [r.weekNo, r]));
 
-      // Check if this report already exists in the database
-      const existingReport = await WeeklyReportModel.findOne({ userId, weekNo });
+  return chunks.map((chunk, index) => {
+    const weekNo = index + 1;
+    const existing = reportMap.get(weekNo) as any;
+    const rawText = chunk
+      .map((r: any) => `Date: ${r.date} - ${r.accomplishments}`)
+      .join("\n");
 
-      // If it exists AND the raw accomplishments haven't changed, just return the saved version!
-      if (existingReport && existingReport.rawText === rawAccomplishments) {
-        return JSON.parse(JSON.stringify(existingReport));
-      }
-
-      // Otherwise, generate it via AI (either it's new, or you logged a new day making the raw text longer)
-      const aiData = await generateReportContentWithAI(rawAccomplishments);
-
-      // Save or Update in the database
-      const savedReport = await WeeklyReportModel.findOneAndUpdate(
-        { userId, weekNo },
-        { startDate, endDate, isComplete, rawText: rawAccomplishments, aiData },
-        { upsert: true, new: true }
-      );
-
-      return JSON.parse(JSON.stringify(savedReport));
-    })
-  );
-
-  return reports;
+    return {
+      _id: existing?._id?.toString() ?? null,
+      weekNo,
+      startDate: chunk[0].date as string,
+      endDate: chunk[chunk.length - 1].date as string,
+      isComplete: chunk.length === 5,
+      rawText,
+      aiData: existing?.aiData ?? null,
+    };
+  });
 }
 
+// ─────────────────────────────────────────────────────────────
+// GENERATE a single week on demand (called from the client).
+// ─────────────────────────────────────────────────────────────
+export async function generateSingleWeekReport(userId: string, weekNo: number) {
+  await dbConnect();
+
+  const user = await UserModel.findById(userId).lean() as { startDate?: string } | null;
+  if (!user?.startDate) throw new Error("User not found.");
+
+  const records = await DailyRecordModel.find({
+    userId,
+    date: { $gte: user.startDate },
+  })
+    .sort({ date: 1 })
+    .lean();
+
+  const validDays = (records as any[]).filter(
+    (r) => r.totalHours > 0 && r.accomplishments?.trim()
+  );
+
+  const chunks: any[][] = [];
+  for (let i = 0; i < validDays.length; i += 5) {
+    chunks.push(validDays.slice(i, i + 5));
+  }
+
+  const chunk = chunks[weekNo - 1];
+  if (!chunk) throw new Error(`No data found for Week ${weekNo}.`);
+
+  const startDate = chunk[0].date as string;
+  const endDate = chunk[chunk.length - 1].date as string;
+  const isComplete = chunk.length === 5;
+  const rawText = chunk
+    .map((r: any) => `Date: ${r.date} - ${r.accomplishments}`)
+    .join("\n");
+
+  const aiData = await generateReportContentWithAI(rawText);
+  if (!aiData) throw new Error("AI generation failed. Please try again.");
+
+  const saved = await WeeklyReportModel.findOneAndUpdate(
+    { userId, weekNo },
+    { startDate, endDate, isComplete, rawText, aiData },
+    { upsert: true, new: true }
+  );
+
+  revalidatePath("/weekly-reports");
+  return JSON.parse(JSON.stringify(saved));
+}
+
+// ─────────────────────────────────────────────────────────────
+// REGENERATE an existing report (with optional custom prompt).
+// ─────────────────────────────────────────────────────────────
 export async function regenerateWeeklyReport(reportId: string, customPrompt?: string) {
   await dbConnect();
+
   const report = await WeeklyReportModel.findById(reportId);
-  if (!report) throw new Error("Report not found in database.");
+  if (!report) throw new Error("Report not found.");
 
   const newAiData = await generateReportContentWithAI(report.rawText, customPrompt);
-  
-  if (newAiData) {
-    report.aiData = newAiData;
-    await report.save();
-    revalidatePath("/weekly-reports");
-    return { success: true };
-  }
-  return { error: "Failed to regenerate report." };
+  if (!newAiData) return { error: "AI generation failed. Please try again." };
+
+  report.aiData = newAiData;
+  await report.save();
+  revalidatePath("/weekly-reports");
+  return { success: true };
 }
 
+// ─────────────────────────────────────────────────────────────
+// Internal AI helper — compact output sized for A4.
+// ─────────────────────────────────────────────────────────────
 async function generateReportContentWithAI(rawText: string, customPrompt?: string) {
-  let prompt = `
-    You are an assistant for an IT OJT student. Based on the following daily accomplishments over a week, generate a structured JSON object for their Weekly Progress Report. 
-    Make the outputs concise, professional, and use bullet points where necessary.
+  const prompt = `
+You are an assistant for an IT OJT (On-the-Job Training) student.
+Generate a Weekly Progress Report JSON from the daily accomplishments below.
 
-    Raw Accomplishments:
-    ${rawText}
+CRITICAL FORMATTING RULES (to fit on a single A4 page):
+- dutiesPerformed   : exactly 1 sentence, max 20 words
+- newTrainings      : exactly 1 sentence, max 20 words
+- proposedActivities: exactly 3 items, each item max 10 words
+- actualAccomplishments: exactly 3 items that directly match each proposed activity, each max 10 words
+- problemsEncountered: exactly 1 sentence, max 20 words
+- solutions         : exactly 1 sentence, max 20 words
+- goalsNextWeek     : exactly 1 sentence, max 20 words
 
-    Return ONLY a JSON object with these exact keys:
-    - "dutiesPerformed": A 1-2 sentence summary of general duties.
-    - "newTrainings": A 1-2 sentence summary of new skills or tool setups.
-    - "proposedActivities": An array of strings (3-5 short bullet points).
-    - "actualAccomplishments": An array of strings (3-5 short bullet points directly corresponding to the proposed activities).
-    - "problemsEncountered": 1 sentence describing a realistic challenge based on the context.
-    - "solutions": 1 sentence describing how it was overcome.
-    - "goalsNextWeek": 1 sentence stating a goal for next week.
-  `;
+Daily Accomplishments:
+${rawText}
 
-  if (customPrompt) {
-    prompt += `\n\nUSER ADDITIONAL INSTRUCTIONS: ${customPrompt}\nMake sure to strictly follow these additional instructions while keeping the JSON format intact.`;
-  }
+${customPrompt ? `Additional instructions: ${customPrompt}\n` : ""}
+Return ONLY a valid JSON object — no markdown fences, no explanation, no extra keys.
+Example structure:
+{
+  "dutiesPerformed": "...",
+  "newTrainings": "...",
+  "proposedActivities": ["...", "...", "..."],
+  "actualAccomplishments": ["...", "...", "..."],
+  "problemsEncountered": "...",
+  "solutions": "...",
+  "goalsNextWeek": "..."
+}
+`.trim();
 
   try {
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
     const result = await model.generateContent(prompt);
-    let text = result.response.text();
-    text = text.replace(/```json/g, "").replace(/```/g, "").trim();
-    return JSON.parse(text);
+    let text = result.response.text().trim();
+
+    // Strip markdown fences if present
+    text = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+
+    const parsed = JSON.parse(text);
+
+    // Validate all required keys exist
+    const required = [
+      "dutiesPerformed",
+      "newTrainings",
+      "proposedActivities",
+      "actualAccomplishments",
+      "problemsEncountered",
+      "solutions",
+      "goalsNextWeek",
+    ] as const;
+
+    for (const key of required) {
+      if (!(key in parsed)) throw new Error(`AI response missing key: ${key}`);
+    }
+
+    // Enforce max 3 bullet points
+    if (Array.isArray(parsed.proposedActivities)) {
+      parsed.proposedActivities = parsed.proposedActivities.slice(0, 3);
+    }
+    if (Array.isArray(parsed.actualAccomplishments)) {
+      parsed.actualAccomplishments = parsed.actualAccomplishments.slice(0, 3);
+    }
+
+    return parsed;
   } catch (error) {
-    console.error("AI Generation failed", error);
+    console.error("AI Generation failed:", error);
     return null;
   }
 }
