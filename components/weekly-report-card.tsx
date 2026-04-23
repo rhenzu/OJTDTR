@@ -1,6 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import { format } from "date-fns";
+import { RefreshCw } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { regenerateWeeklyReport } from "@/actions/report-actions";
 
 interface ReportProps {
   report: any;
@@ -8,112 +14,156 @@ interface ReportProps {
 }
 
 export function WeeklyReportCard({ report, studentName }: ReportProps) {
-  const { weekNo, startDate, endDate, aiData, isComplete } = report;
+  const { _id, weekNo, startDate, endDate, aiData, isComplete } = report;
+  const [customPrompt, setCustomPrompt] = useState("");
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
 
-  // Format Dates (e.g., January 28 - February 3, 2026)
   const start = new Date(startDate);
   const end = new Date(endDate);
-  
   const startFormat = format(start, "MMMM d");
-  const endFormat = start.getMonth() === end.getMonth() 
-    ? format(end, "d, yyyy") 
-    : format(end, "MMMM d, yyyy");
-  
+  const endFormat = start.getMonth() === end.getMonth() ? format(end, "d, yyyy") : format(end, "MMMM d, yyyy");
   const inclusiveDate = `${startFormat} - ${endFormat}`;
+
+  const handleRegenerate = async () => {
+    if (!_id) return;
+    setIsGenerating(true);
+    await regenerateWeeklyReport(_id, customPrompt);
+    setIsGenerating(false);
+    setIsOpen(false);
+    setCustomPrompt(""); // Reset prompt after success
+  };
 
   if (!aiData) return <div>Failed to load AI Data for Week {weekNo}</div>;
 
   return (
-    <div className="bg-white p-8 mb-8 border border-gray-300 shadow-sm rounded-md" style={{ fontFamily: '"Century Gothic", sans-serif' }}>
+    <div className="relative mb-8 group">
       
-      {!isComplete && (
-        <div className="mb-4 text-xs font-sans font-bold text-amber-600 bg-amber-50 p-2 rounded">
-          Note: This week currently has less than 5 logged days. Continue logging to complete it.
-        </div>
-      )}
-
-      {/* Header section */}
-      <h1 className="text-center font-bold text-[14pt] mb-6">WEEKLY PROGRESS REPORT</h1>
-      
-      <div className="mb-6 space-y-1 text-sm">
-        <p className="font-bold">{studentName.toUpperCase()}</p>
-        <p>Week #: {weekNo}</p>
-        <p>{inclusiveDate}</p>
+      {/* Regeneration Controls (Hidden when printing) */}
+      <div className="absolute top-2 right-2 print:hidden opacity-0 group-hover:opacity-100 transition-opacity">
+        <Dialog open={isOpen} onOpenChange={setIsOpen}>
+          <DialogTrigger asChild>
+            <Button variant="outline" size="sm" className="gap-2 bg-white/80 backdrop-blur shadow-sm">
+              <RefreshCw className="w-4 h-4" />
+              Regenerate AI
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Regenerate Week {weekNo} Report</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <p className="text-sm text-muted-foreground">
+                Give the AI specific instructions on how to rewrite this week's report (e.g., "Make the tone more technical" or "Focus entirely on the networking aspects"). Leave blank to just do a standard rewrite.
+              </p>
+              <Textarea 
+                placeholder="Optional custom instructions..." 
+                value={customPrompt}
+                onChange={(e) => setCustomPrompt(e.target.value)}
+                rows={4}
+              />
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsOpen(false)}>Cancel</Button>
+              <Button onClick={handleRegenerate} disabled={isGenerating}>
+                {isGenerating ? "Generating..." : "Regenerate Report"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
 
-      {/* Main Table */}
-      <table className="w-full border-collapse border border-black text-sm mb-12">
-        <tbody>
-          <tr>
-            <td colSpan={2} className="border border-black p-3 align-top min-h-[60px]">
-              <span className="font-bold block mb-2">Duties Performed this week:</span>
-              {aiData.dutiesPerformed}
-            </td>
-          </tr>
-          <tr>
-            <td colSpan={2} className="border border-black p-3 align-top min-h-[60px]">
-              <span className="font-bold block mb-2">What new training/s took place this week?</span>
-              {aiData.newTrainings}
-            </td>
-          </tr>
-          <tr>
-            <td colSpan={2} className="border border-black p-3 align-top bg-gray-50 text-center font-bold">
-              What were your major accomplishments based from the Proposed Activities in your Training Schedule Form? Provide a detailed description of the tasks involved in the accomplishment.
-            </td>
-          </tr>
-          <tr>
-            <td className="border border-black p-3 align-top font-bold w-1/2 text-center uppercase">
-              Proposed Activity/ies
-            </td>
-            <td className="border border-black p-3 align-top font-bold w-1/2 text-center uppercase">
-              Accomplishments
-            </td>
-          </tr>
-          <tr>
-            <td className="border border-black p-3 align-top">
-              <ul className="list-disc pl-5 space-y-1">
-                {aiData.proposedActivities?.map((item: string, i: number) => (
-                  <li key={i}>{item}</li>
-                ))}
-              </ul>
-            </td>
-            <td className="border border-black p-3 align-top">
-              <ul className="list-disc pl-5 space-y-1">
-                {aiData.actualAccomplishments?.map((item: string, i: number) => (
-                  <li key={i}>{item}</li>
-                ))}
-              </ul>
-            </td>
-          </tr>
-          <tr>
-            <td colSpan={2} className="border border-black p-3 align-top">
-              <span className="font-bold block mb-2">What problems have you encountered this week?</span>
-              {aiData.problemsEncountered}
-            </td>
-          </tr>
-          <tr>
-            <td colSpan={2} className="border border-black p-3 align-top">
-              <span className="font-bold block mb-2">How did you overcome or solve those problems?</span>
-              {aiData.solutions}
-            </td>
-          </tr>
-          <tr>
-            <td colSpan={2} className="border border-black p-3 align-top">
-              <span className="font-bold block mb-2">List one or two goals you have set for yourself next week.</span>
-              {aiData.goalsNextWeek}
-            </td>
-          </tr>
-        </tbody>
-      </table>
+      {/* The Printable Report Wrapper */}
+      <div className="bg-white p-8 border border-gray-300 shadow-sm rounded-md" style={{ fontFamily: '"Century Gothic", sans-serif' }}>
+        
+        {!isComplete && (
+          <div className="mb-4 text-xs font-sans font-bold text-amber-600 bg-amber-50 p-2 rounded print:hidden">
+            Note: This week currently has less than 5 logged days. Continue logging to complete it.
+          </div>
+        )}
 
-      {/* Signature Section */}
-      <div className="mt-12 text-sm">
-        <p className="mb-8">Noted by:</p>
-        <div className="w-64">
-          <p className="font-bold uppercase border-b border-black text-center pb-1 mb-1">
-            KIRBY FUENTES
-          </p>
-          <p className="text-center">OIC-IT DEPARTMENT, TSKI</p>
+        <h1 className="text-center font-bold text-[14pt] mb-6">WEEKLY PROGRESS REPORT</h1>
+        
+        <div className="mb-6 space-y-1 text-sm">
+          <p className="font-bold">{studentName.toUpperCase()}</p>
+          <p>Week #: {weekNo}</p>
+          <p>{inclusiveDate}</p>
+        </div>
+
+        {/* Main Table */}
+        <table className="w-full border-collapse border border-black text-sm mb-12">
+          <tbody>
+            <tr>
+              <td colSpan={2} className="border border-black p-3 align-top min-h-[60px]">
+                <span className="font-bold block mb-2">Duties Performed this week:</span>
+                {aiData.dutiesPerformed}
+              </td>
+            </tr>
+            <tr>
+              <td colSpan={2} className="border border-black p-3 align-top min-h-[60px]">
+                <span className="font-bold block mb-2">What new training/s took place this week?</span>
+                {aiData.newTrainings}
+              </td>
+            </tr>
+            <tr>
+              <td colSpan={2} className="border border-black p-3 align-top bg-gray-50 text-center font-bold">
+                What were your major accomplishments based from the Proposed Activities in your Training Schedule Form? Provide a detailed description of the tasks involved in the accomplishment.
+              </td>
+            </tr>
+            <tr>
+              <td className="border border-black p-3 align-top font-bold w-1/2 text-center uppercase">
+                Proposed Activity/ies
+              </td>
+              <td className="border border-black p-3 align-top font-bold w-1/2 text-center uppercase">
+                Accomplishments
+              </td>
+            </tr>
+            <tr>
+              <td className="border border-black p-3 align-top">
+                <ul className="list-disc pl-5 space-y-1">
+                  {aiData.proposedActivities?.map((item: string, i: number) => (
+                    <li key={i}>{item}</li>
+                  ))}
+                </ul>
+              </td>
+              <td className="border border-black p-3 align-top">
+                <ul className="list-disc pl-5 space-y-1">
+                  {aiData.actualAccomplishments?.map((item: string, i: number) => (
+                    <li key={i}>{item}</li>
+                  ))}
+                </ul>
+              </td>
+            </tr>
+            <tr>
+              <td colSpan={2} className="border border-black p-3 align-top">
+                <span className="font-bold block mb-2">What problems have you encountered this week?</span>
+                {aiData.problemsEncountered}
+              </td>
+            </tr>
+            <tr>
+              <td colSpan={2} className="border border-black p-3 align-top">
+                <span className="font-bold block mb-2">How did you overcome or solve those problems?</span>
+                {aiData.solutions}
+              </td>
+            </tr>
+            <tr>
+              <td colSpan={2} className="border border-black p-3 align-top">
+                <span className="font-bold block mb-2">List one or two goals you have set for yourself next week.</span>
+                {aiData.goalsNextWeek}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        {/* Signature Section */}
+        <div className="mt-12 text-sm">
+          <p className="mb-8">Noted by:</p>
+          <div className="w-64">
+            <p className="font-bold uppercase border-b border-black text-center pb-1 mb-1">
+              KIRBY FUENTES
+            </p>
+            <p className="text-center">OIC-IT DEPARTMENT, TSKI</p>
+          </div>
         </div>
       </div>
     </div>
