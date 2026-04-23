@@ -5,7 +5,7 @@ import { signOut } from "next-auth/react";
 import { useState } from "react";
 import {
   LayoutDashboard, ClipboardList, FileText, Edit3,
-  LogOut, Moon, Sun, Plus, ChevronRight, Printer 
+  LogOut, Moon, Sun, Plus, ChevronRight, Printer, Calendar
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
@@ -15,6 +15,7 @@ const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/records", label: "Time Records", icon: ClipboardList },
   { href: "/forms", label: "15-Day Forms", icon: FileText },
+  { href: "/weekly-reports", label: "Weekly Reports", icon: Calendar },
   { href: "/print-all", label: "Print All Forms", icon: Printer },
   { href: "/override", label: "Override DTR", icon: Edit3 },
 ];
