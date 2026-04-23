@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback } from "react";
 import { format } from "date-fns";
-import { FileText, Loader2, Printer } from "lucide-react";
+import { FileText, Loader2, Printer, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { WeeklyReportCard } from "@/components/weekly-report-card";
 import { generateSingleWeekReport } from "@/actions/report-actions";
@@ -24,71 +24,134 @@ interface Props {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Collects all <style> tags and <link rel="stylesheet"> from
-// the current page so the print window inherits Tailwind + any
-// other CSS already loaded.
+// Grabs every <style> tag and <link rel="stylesheet"> from the
+// live page so the print iframe inherits Tailwind + all CSS.
 // ─────────────────────────────────────────────────────────────
 function collectPageStyles(): string {
   const parts: string[] = [];
-
-  document.querySelectorAll("style").forEach((s) => {
-    parts.push(s.outerHTML);
-  });
-
-  document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]').forEach((l) => {
-    if (l.href) parts.push(`<link rel="stylesheet" href="${l.href}" />`);
-  });
-
+  document.querySelectorAll("style").forEach((s) => parts.push(s.outerHTML));
+  document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]').forEach(
+    (l) => { if (l.href) parts.push(`<link rel="stylesheet" href="${l.href}" />`); }
+  );
   return parts.join("\n");
 }
 
 // ─────────────────────────────────────────────────────────────
-// Opens a clean blank window, injects the report HTML with all
-// the current page's CSS, and triggers the print dialog.
-// Each report is wrapped in .print-page for A4 page breaks.
+// Builds the full HTML for the print document.
+//
+// Key print tricks:
+//  • @page margin: 0  →  eliminates the space Chrome uses for
+//    its date/time & URL headers/footers (they still exist but
+//    have no room and are clipped away on most devices).
+//  • body margin: 10mm 12mm  →  restores our content margins.
+//  • .print-page height: 277mm (= 297 – 20mm body margin)
+//    with flex-column layout  →  content fills exactly one A4.
+//  • <title> is intentionally blank  →  removes the title text
+//    from Chrome's print header line.
 // ─────────────────────────────────────────────────────────────
-function openPrintWindow(bodyHtml: string, title: string) {
-  const win = window.open("", "_blank", "width=900,height=700");
-  if (!win) {
-    alert("Please allow pop-ups for this site so printing works.");
-    return;
-  }
-
-  const styles = collectPageStyles();
-
-  win.document.write(`<!DOCTYPE html>
+function buildPrintHtml(bodyHtml: string): string {
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>${title}</title>
-  ${styles}
+  <title></title>
+  ${collectPageStyles()}
   <style>
-    @page { size: A4 portrait; margin: 10mm 12mm; }
-    html, body { margin: 0; padding: 0; background: white; }
-    .print-page { page-break-after: always; break-after: page; }
-    .print-page:last-child { page-break-after: avoid; break-after: avoid; }
+    @page {
+      size: A4 portrait;
+      margin: 0;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: white;
+    }
+    body {
+      /* Our own content margins since @page margin is 0 */
+      padding: 10mm 12mm;
+      box-sizing: border-box;
+    }
+
+    /* ── One report = one A4 page ── */
+    /* A4 height 297mm minus 10mm top + 10mm bottom body padding = 277mm */
+    .print-page {
+      height: 277mm;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      page-break-after: always;
+      break-after: page;
+    }
+    .print-page:last-child {
+      page-break-after: avoid;
+      break-after: avoid;
+    }
+
+    /* Force the cloned card (direct child of .print-page) to fill
+       the full 277mm and behave as a flex column so the spacer
+       inside it can push the signature to the bottom. */
+    .print-page > * {
+      flex: 1 !important;
+      display: flex !important;
+      flex-direction: column !important;
+      min-height: 277mm !important;
+      box-sizing: border-box !important;
+      /* strip screen-only decorations */
+      border: none !important;
+      box-shadow: none !important;
+      border-radius: 0 !important;
+      margin: 0 !important;
+    }
   </style>
 </head>
 <body>${bodyHtml}</body>
-</html>`);
+</html>`;
+}
 
-  win.document.close();
-
-  // Primary: wait for window load before printing
-  win.addEventListener("load", () => {
-    win.focus();
-    win.print();
-    win.close();
+// ─────────────────────────────────────────────────────────────
+// Injects a hidden <iframe>, writes the print HTML into it,
+// then calls print() on that frame.
+// Using an iframe (vs window.open) means:
+//  • No popup-blocker issues
+//  • The footer URL shows the app URL, not "about:blank"
+// ─────────────────────────────────────────────────────────────
+function printViaIframe(html: string) {
+  const iframe = document.createElement("iframe");
+  Object.assign(iframe.style, {
+    position: "fixed",
+    width: "1px",
+    height: "1px",
+    top: "-9999px",
+    left: "-9999px",
+    border: "none",
+    opacity: "0",
   });
+  document.body.appendChild(iframe);
 
-  // Fallback: some browsers fire load before the listener is attached
-  setTimeout(() => {
-    if (!win.closed) {
-      win.focus();
-      win.print();
-      win.close();
-    }
-  }, 900);
+  const doc = iframe.contentDocument ?? iframe.contentWindow?.document;
+  if (!doc) {
+    document.body.removeChild(iframe);
+    return;
+  }
+
+  doc.open();
+  doc.write(buildPrintHtml(html));
+  doc.close();
+
+  // Give the iframe time to load stylesheets, then print.
+  const doPrint = () => {
+    iframe.contentWindow?.focus();
+    iframe.contentWindow?.print();
+    // Remove iframe after the print dialog closes.
+    setTimeout(() => {
+      if (iframe.parentNode) document.body.removeChild(iframe);
+    }, 1000);
+  };
+
+  iframe.onload = doPrint;
+  // Fallback in case onload already fired before we set the handler.
+  setTimeout(doPrint, 800);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -98,43 +161,32 @@ export function WeeklyReportsClient({ initialWeeksData, studentName, userId }: P
   const [generatingWeek, setGeneratingWeek] = useState<number | null>(null);
   const [errors, setErrors] = useState<Record<number, string>>({});
 
-  // Holds a ref to each week's printable card DOM node
+  // weekNo → the printable card DOM element
   const printRefs = useRef<Map<number, HTMLElement>>(new Map());
 
-  // WeeklyReportCard calls this with its printable <div> node
   const registerPrintRef = useCallback(
     (weekNo: number) => (el: HTMLElement | null) => {
-      if (el) {
-        printRefs.current.set(weekNo, el);
-      } else {
-        printRefs.current.delete(weekNo);
-      }
+      if (el) printRefs.current.set(weekNo, el);
+      else printRefs.current.delete(weekNo);
     },
     []
   );
 
-  // ── Print ONE week ───────────────────────────────────────────
+  // ── Print one week ───────────────────────────────────────────
   const handlePrintOne = (weekNo: number) => {
     const el = printRefs.current.get(weekNo);
     if (!el) return;
-    openPrintWindow(
-      `<div class="print-page">${el.outerHTML}</div>`,
-      `Week ${weekNo} — Weekly Progress Report`
-    );
+    printViaIframe(`<div class="print-page">${el.outerHTML}</div>`);
   };
 
-  // ── Print ALL generated weeks ────────────────────────────────
+  // ── Print all generated weeks ────────────────────────────────
   const handlePrintAll = () => {
-    const sorted = Array.from(printRefs.current.entries()).sort(
-      ([a], [b]) => a - b
-    );
-    if (sorted.length === 0) return;
-
+    const sorted = Array.from(printRefs.current.entries()).sort(([a], [b]) => a - b);
+    if (!sorted.length) return;
     const allHtml = sorted
       .map(([, el]) => `<div class="print-page">${el.outerHTML}</div>`)
       .join("\n");
-
-    openPrintWindow(allHtml, "All Weekly Progress Reports");
+    printViaIframe(allHtml);
   };
 
   // ── Generate AI for one week ─────────────────────────────────
@@ -145,9 +197,7 @@ export function WeeklyReportsClient({ initialWeeksData, studentName, userId }: P
       const saved = await generateSingleWeekReport(userId, weekNo);
       setWeeksData((prev) =>
         prev.map((w) =>
-          w.weekNo === weekNo
-            ? { ...w, _id: saved._id, aiData: saved.aiData }
-            : w
+          w.weekNo === weekNo ? { ...w, _id: saved._id, aiData: saved.aiData } : w
         )
       );
     } catch (err: any) {
@@ -165,7 +215,7 @@ export function WeeklyReportsClient({ initialWeeksData, studentName, userId }: P
   return (
     <div className="p-6 max-w-4xl mx-auto">
       {/* Page header */}
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex justify-between items-center mb-3">
         <div>
           <h1 className="text-2xl font-bold">AI Weekly Reports</h1>
           <p className="text-muted-foreground text-sm">
@@ -187,6 +237,17 @@ export function WeeklyReportsClient({ initialWeeksData, studentName, userId }: P
           <Printer className="w-4 h-4" />
           Print All ({generatedCount})
         </Button>
+      </div>
+
+      {/* Tip banner about browser headers/footers */}
+      <div className="flex items-start gap-2 bg-blue-50 border border-blue-200 text-blue-800 text-xs rounded-md px-3 py-2 mb-6">
+        <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+        <span>
+          <strong>For clean prints:</strong> In the browser print dialog, set{" "}
+          <strong>Margins → None</strong> and uncheck{" "}
+          <strong>Headers and footers</strong> to remove the date/time and page
+          URL from the output.
+        </span>
       </div>
 
       {/* Report list */}
@@ -211,12 +272,9 @@ export function WeeklyReportsClient({ initialWeeksData, studentName, userId }: P
                     registerRef={registerPrintRef(week.weekNo)}
                   />
                 ) : (
-                  /* Not yet generated */
                   <div className="border-2 border-dashed border-gray-200 rounded-xl p-10 text-center bg-gray-50/50">
                     <FileText className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-                    <h3 className="font-semibold text-gray-700 mb-1">
-                      Week {week.weekNo}
-                    </h3>
+                    <h3 className="font-semibold text-gray-700 mb-1">Week {week.weekNo}</h3>
                     <p className="text-sm text-muted-foreground mb-1">{dateRange}</p>
                     {!week.isComplete && (
                       <p className="text-xs text-amber-600 mb-4">
@@ -224,13 +282,9 @@ export function WeeklyReportsClient({ initialWeeksData, studentName, userId }: P
                       </p>
                     )}
                     {week.isComplete && <div className="mb-4" />}
-
                     {errors[week.weekNo] && (
-                      <p className="text-sm text-red-500 mb-3">
-                        ⚠ {errors[week.weekNo]}
-                      </p>
+                      <p className="text-sm text-red-500 mb-3">⚠ {errors[week.weekNo]}</p>
                     )}
-
                     <Button
                       onClick={() => handleGenerate(week.weekNo)}
                       disabled={generatingWeek !== null}
