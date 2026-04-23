@@ -2,8 +2,17 @@ import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 import { generateWeeklyReports } from "@/actions/report-actions";
 import { WeeklyReportCard } from "@/components/weekly-report-card";
-import { Button } from "@/components/ui/button";
-import { Printer } from "lucide-react";
+// Import your existing client-side print button
+import { PrintButton } from "@/components/print-button"; 
+
+// 1. Define the shape of our report data so TypeScript is happy
+interface ReportData {
+  weekNo: number;
+  startDate: string;
+  endDate: string;
+  isComplete: boolean;
+  aiData: any; 
+}
 
 export default async function WeeklyReportsPage() {
   const session = await auth();
@@ -23,14 +32,8 @@ export default async function WeeklyReportsPage() {
           </p>
         </div>
         
-        {/* Simple inline print script triggered via button */}
-        <Button onClick={() => {
-            "use client";
-            window.print();
-        }}>
-          <Printer className="w-4 h-4 mr-2" />
-          Print All Reports
-        </Button>
+        {/* 2. Replaced the inline button with your PrintButton component */}
+        <PrintButton />
       </div>
 
       <div className="space-y-12 print:space-y-0 print:block">
@@ -39,7 +42,8 @@ export default async function WeeklyReportsPage() {
             Not enough working days logged yet to generate a report.
           </p>
         ) : (
-          reports.map((report) => (
+          /* 3. Explicitly tell TypeScript that 'report' is of type 'ReportData' */
+          reports.map((report: ReportData) => (
             <div key={report.weekNo} className="print:break-after-page print:break-inside-avoid">
                <WeeklyReportCard report={report} studentName={studentName} />
             </div>
