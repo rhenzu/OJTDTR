@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { format } from "date-fns";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -17,9 +17,18 @@ import { regenerateWeeklyReport } from "@/actions/report-actions";
 interface ReportProps {
   report: any;
   studentName: string;
+  /** Called when the user clicks "Print this week" */
+  onPrint: () => void;
+  /** Parent passes this to register the printable DOM node */
+  registerRef: (el: HTMLElement | null) => void;
 }
 
-export function WeeklyReportCard({ report, studentName }: ReportProps) {
+export function WeeklyReportCard({
+  report,
+  studentName,
+  onPrint,
+  registerRef,
+}: ReportProps) {
   const { _id, weekNo, startDate, endDate, aiData, isComplete } = report;
 
   const [customPrompt, setCustomPrompt] = useState("");
@@ -54,14 +63,28 @@ export function WeeklyReportCard({ report, studentName }: ReportProps) {
 
   return (
     <div className="relative mb-8 group">
-      {/* ── Regenerate button (screen only) ── */}
-      <div className="absolute top-2 right-2 print:hidden opacity-0 group-hover:opacity-100 transition-opacity z-10">
+
+      {/* ── Controls bar (visible on hover, never printed) ────── */}
+      <div className="absolute top-2 right-2 z-10 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+
+        {/* Print this week */}
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-1.5 bg-white/80 backdrop-blur shadow-sm"
+          onClick={onPrint}
+        >
+          <Printer className="w-4 h-4" />
+          Print week
+        </Button>
+
+        {/* Regenerate */}
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
           <DialogTrigger asChild>
             <Button
               variant="outline"
               size="sm"
-              className="gap-2 bg-white/80 backdrop-blur shadow-sm"
+              className="gap-1.5 bg-white/80 backdrop-blur shadow-sm"
             >
               <RefreshCw className="w-4 h-4" />
               Regenerate AI
@@ -95,49 +118,43 @@ export function WeeklyReportCard({ report, studentName }: ReportProps) {
         </Dialog>
       </div>
 
-      {/* ─────────────────────────────────────────────────────────────
-          Printable A4 card
-          210 mm wide, designed to stay within 297 mm tall.
-          Screen: shows as a white card with border.
-          Print:  fills the A4 page (set via @page in WeeklyReportsClient).
-      ──────────────────────────────────────────────────────────────── */}
+      {/* ─────────────────────────────────────────────────────────
+          THE PRINTABLE CARD
+          `ref={registerRef}` lets the parent clone this exact
+          element into the print window — completely isolated from
+          the app shell (sidebar, nav, etc.).
+          A4 width on screen = 794 px @ 96 dpi.
+      ──────────────────────────────────────────────────────────── */}
       <div
-        className={[
-          "bg-white border border-gray-300 shadow-sm rounded-md",
-          // Screen: fixed A4 width so you can preview what prints
-          "mx-auto w-full max-w-[794px]",
-          // Print: remove decorative styles, fill the page
-          "print:shadow-none print:border-none print:rounded-none print:max-w-none print:w-full",
-        ].join(" ")}
+        ref={registerRef}
+        className="bg-white border border-gray-300 shadow-sm rounded-md mx-auto w-full max-w-[794px]"
         style={{ fontFamily: '"Century Gothic", "Century Gothic Paneuropean", sans-serif' }}
       >
-        {/* Padding wrapper — tighter on print */}
-        <div className="p-6 print:p-0">
+        <div className="p-6">
 
-          {/* Incomplete warning (screen only) */}
+          {/* Incomplete warning (informational only, won't show in print window) */}
           {!isComplete && (
-            <div className="mb-3 text-xs font-sans font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-3 py-2 rounded print:hidden">
+            <div className="mb-3 text-xs font-sans font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-3 py-2 rounded">
               This week has fewer than 5 logged days. Keep logging to complete it.
             </div>
           )}
 
-          {/* Report title */}
+          {/* Title */}
           <h1 className="text-center font-bold text-[13pt] mb-4 tracking-wide">
             WEEKLY PROGRESS REPORT
           </h1>
 
-          {/* Header info */}
+          {/* Header block */}
           <div className="mb-4 space-y-0.5 text-[10pt]">
             <p className="font-bold">{studentName.toUpperCase()}</p>
             <p>Week #: {weekNo}</p>
             <p>{inclusiveDate}</p>
           </div>
 
-          {/* ── Main table ── */}
+          {/* ── Report table ── */}
           <table className="w-full border-collapse text-[9pt] mb-8">
             <tbody>
 
-              {/* Duties */}
               <tr>
                 <td colSpan={2} className="border border-black p-2 align-top">
                   <span className="font-bold block mb-1">Duties Performed this week:</span>
@@ -145,7 +162,6 @@ export function WeeklyReportCard({ report, studentName }: ReportProps) {
                 </td>
               </tr>
 
-              {/* Trainings */}
               <tr>
                 <td colSpan={2} className="border border-black p-2 align-top">
                   <span className="font-bold block mb-1">
@@ -155,7 +171,6 @@ export function WeeklyReportCard({ report, studentName }: ReportProps) {
                 </td>
               </tr>
 
-              {/* Accomplishments header */}
               <tr>
                 <td
                   colSpan={2}
@@ -167,7 +182,6 @@ export function WeeklyReportCard({ report, studentName }: ReportProps) {
                 </td>
               </tr>
 
-              {/* Column headers */}
               <tr>
                 <td className="border border-black p-2 font-bold w-1/2 text-center uppercase text-[8.5pt]">
                   Proposed Activity/ies
@@ -177,15 +191,12 @@ export function WeeklyReportCard({ report, studentName }: ReportProps) {
                 </td>
               </tr>
 
-              {/* Activities & Accomplishments */}
               <tr>
                 <td className="border border-black p-2 align-top">
                   <ul className="list-disc pl-4 space-y-0.5">
                     {(aiData.proposedActivities ?? []).map(
                       (item: string, i: number) => (
-                        <li key={i} className="leading-snug">
-                          {item}
-                        </li>
+                        <li key={i} className="leading-snug">{item}</li>
                       )
                     )}
                   </ul>
@@ -194,16 +205,13 @@ export function WeeklyReportCard({ report, studentName }: ReportProps) {
                   <ul className="list-disc pl-4 space-y-0.5">
                     {(aiData.actualAccomplishments ?? []).map(
                       (item: string, i: number) => (
-                        <li key={i} className="leading-snug">
-                          {item}
-                        </li>
+                        <li key={i} className="leading-snug">{item}</li>
                       )
                     )}
                   </ul>
                 </td>
               </tr>
 
-              {/* Problems */}
               <tr>
                 <td colSpan={2} className="border border-black p-2 align-top">
                   <span className="font-bold block mb-1">
@@ -213,7 +221,6 @@ export function WeeklyReportCard({ report, studentName }: ReportProps) {
                 </td>
               </tr>
 
-              {/* Solutions */}
               <tr>
                 <td colSpan={2} className="border border-black p-2 align-top">
                   <span className="font-bold block mb-1">
@@ -223,7 +230,6 @@ export function WeeklyReportCard({ report, studentName }: ReportProps) {
                 </td>
               </tr>
 
-              {/* Goals */}
               <tr>
                 <td colSpan={2} className="border border-black p-2 align-top">
                   <span className="font-bold block mb-1">
