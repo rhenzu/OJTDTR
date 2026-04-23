@@ -10,7 +10,9 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 export async function generateWeeklyReports(userId: string) {
   await dbConnect();
   
-  const user = await UserModel.findById(userId).lean();
+  // FIX: Cast the lean() result so TypeScript knows startDate exists
+  const user = await UserModel.findById(userId).lean() as { startDate?: string } | null;
+  
   if (!user || !user.startDate) throw new Error("User or OJT start date not found");
 
   // Fetch all records from the start date chronologically
