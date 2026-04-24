@@ -39,15 +39,13 @@ function collectPageStyles(): string {
 // ─────────────────────────────────────────────────────────────
 // Builds the full HTML for the print document.
 //
-// Key print tricks:
-//  • @page margin: 0  →  eliminates the space Chrome uses for
-//    its date/time & URL headers/footers (they still exist but
-//    have no room and are clipped away on most devices).
-//  • body margin: 10mm 12mm  →  restores our content margins.
-//  • .print-page height: 277mm (= 297 – 20mm body margin)
-//    with flex-column layout  →  content fills exactly one A4.
-//  • <title> is intentionally blank  →  removes the title text
-//    from Chrome's print header line.
+// Fix for uneven top margins across pages:
+//  • @page margin: 10mm 12mm  →  the browser applies these
+//    margins on EVERY printed page uniformly, including page 2+.
+//    This is the only reliable way to get consistent margins.
+//  • body padding: 0  →  no extra offset on just the first page.
+//  • .print-page height: 277mm (297mm A4 − 10mm top − 10mm
+//    bottom @page margin) to fill exactly one sheet.
 // ─────────────────────────────────────────────────────────────
 function buildPrintHtml(bodyHtml: string): string {
   return `<!DOCTYPE html>
@@ -59,21 +57,19 @@ function buildPrintHtml(bodyHtml: string): string {
   <style>
     @page {
       size: A4 portrait;
-      margin: 0;
+      /* Margins here are applied uniformly to every printed page,
+         unlike body padding which only affects the first page. */
+      margin: 10mm 12mm;
     }
     html, body {
       margin: 0;
       padding: 0;
       background: white;
     }
-    body {
-      /* Our own content margins since @page margin is 0 */
-      padding: 10mm 12mm;
-      box-sizing: border-box;
-    }
 
     /* ── One report = one A4 page ── */
-    /* A4 height 297mm minus 10mm top + 10mm bottom body padding = 277mm */
+    /* @page margin: 10mm top + 10mm bottom = 20mm consumed.
+       277mm = 297mm A4 height − 20mm margins. */
     .print-page {
       height: 277mm;
       box-sizing: border-box;
@@ -88,16 +84,15 @@ function buildPrintHtml(bodyHtml: string): string {
       break-after: avoid;
     }
 
-    /* Force the cloned card (direct child of .print-page) to fill
-       the full 277mm and behave as a flex column so the spacer
-       inside it can push the signature to the bottom. */
+    /* Force the cloned card to fill the full 277mm as a flex
+       column so the spacer inside can push the signature down. */
     .print-page > * {
       flex: 1 !important;
       display: flex !important;
       flex-direction: column !important;
       min-height: 277mm !important;
       box-sizing: border-box !important;
-      /* strip screen-only decorations */
+      /* Strip screen-only decorations */
       border: none !important;
       box-shadow: none !important;
       border-radius: 0 !important;
@@ -112,9 +107,6 @@ function buildPrintHtml(bodyHtml: string): string {
 // ─────────────────────────────────────────────────────────────
 // Injects a hidden <iframe>, writes the print HTML into it,
 // then calls print() on that frame.
-// Using an iframe (vs window.open) means:
-//  • No popup-blocker issues
-//  • The footer URL shows the app URL, not "about:blank"
 // ─────────────────────────────────────────────────────────────
 function printViaIframe(html: string) {
   const iframe = document.createElement("iframe");
@@ -139,11 +131,9 @@ function printViaIframe(html: string) {
   doc.write(buildPrintHtml(html));
   doc.close();
 
-  // Give the iframe time to load stylesheets, then print.
   const doPrint = () => {
     iframe.contentWindow?.focus();
     iframe.contentWindow?.print();
-    // Remove iframe after the print dialog closes.
     setTimeout(() => {
       if (iframe.parentNode) document.body.removeChild(iframe);
     }, 1000);
