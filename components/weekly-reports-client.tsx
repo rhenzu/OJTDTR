@@ -23,10 +23,6 @@ interface Props {
   userId: string;
 }
 
-// ─────────────────────────────────────────────────────────────
-// Grabs every <style> tag and <link rel="stylesheet"> from the
-// live page so the print iframe inherits Tailwind + all CSS.
-// ─────────────────────────────────────────────────────────────
 function collectPageStyles(): string {
   const parts: string[] = [];
   document.querySelectorAll("style").forEach((s) => parts.push(s.outerHTML));
@@ -37,15 +33,14 @@ function collectPageStyles(): string {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Builds the full HTML for the print document.
+// @page margin: 0  →  collapses the browser's header/footer
+//   margin area, which is exactly where Chrome/Edge render the
+//   URL string and date/time. No margin area = no strings.
 //
-// Fix for uneven top margins across pages:
-//  • @page margin: 10mm 12mm  →  the browser applies these
-//    margins on EVERY printed page uniformly, including page 2+.
-//    This is the only reliable way to get consistent margins.
-//  • body padding: 0  →  no extra offset on just the first page.
-//  • .print-page height: 277mm (297mm A4 − 10mm top − 10mm
-//    bottom @page margin) to fill exactly one sheet.
+// Padding on .print-page (not body)  →  uniform content margins
+//   on every page, since body padding only offsets page 1.
+//
+// Letter size: 8.5 in × 11 in ≈ 216 mm × 279 mm.
 // ─────────────────────────────────────────────────────────────
 function buildPrintHtml(bodyHtml: string): string {
   return `<!DOCTYPE html>
@@ -56,10 +51,8 @@ function buildPrintHtml(bodyHtml: string): string {
   ${collectPageStyles()}
   <style>
     @page {
-      size: A4 portrait;
-      /* Margins here are applied uniformly to every printed page,
-         unlike body padding which only affects the first page. */
-      margin: 10mm 12mm;
+      size: letter portrait;
+      margin: 0;
     }
     html, body {
       margin: 0;
@@ -67,11 +60,9 @@ function buildPrintHtml(bodyHtml: string): string {
       background: white;
     }
 
-    /* ── One report = one A4 page ── */
-    /* @page margin: 10mm top + 10mm bottom = 20mm consumed.
-       277mm = 297mm A4 height − 20mm margins. */
     .print-page {
-      height: 277mm;
+      height: 279mm;
+      padding: 10mm 12mm;
       box-sizing: border-box;
       display: flex;
       flex-direction: column;
@@ -84,15 +75,11 @@ function buildPrintHtml(bodyHtml: string): string {
       break-after: avoid;
     }
 
-    /* Force the cloned card to fill the full 277mm as a flex
-       column so the spacer inside can push the signature down. */
     .print-page > * {
       flex: 1 !important;
       display: flex !important;
       flex-direction: column !important;
-      min-height: 277mm !important;
       box-sizing: border-box !important;
-      /* Strip screen-only decorations */
       border: none !important;
       box-shadow: none !important;
       border-radius: 0 !important;
@@ -104,10 +91,6 @@ function buildPrintHtml(bodyHtml: string): string {
 </html>`;
 }
 
-// ─────────────────────────────────────────────────────────────
-// Injects a hidden <iframe>, writes the print HTML into it,
-// then calls print() on that frame.
-// ─────────────────────────────────────────────────────────────
 function printViaIframe(html: string) {
   const iframe = document.createElement("iframe");
   Object.assign(iframe.style, {
@@ -140,18 +123,14 @@ function printViaIframe(html: string) {
   };
 
   iframe.onload = doPrint;
-  // Fallback in case onload already fired before we set the handler.
   setTimeout(doPrint, 800);
 }
-
-// ─────────────────────────────────────────────────────────────
 
 export function WeeklyReportsClient({ initialWeeksData, studentName, userId }: Props) {
   const [weeksData, setWeeksData] = useState<WeekData[]>(initialWeeksData);
   const [generatingWeek, setGeneratingWeek] = useState<number | null>(null);
   const [errors, setErrors] = useState<Record<number, string>>({});
 
-  // weekNo → the printable card DOM element
   const printRefs = useRef<Map<number, HTMLElement>>(new Map());
 
   const registerPrintRef = useCallback(
@@ -162,14 +141,12 @@ export function WeeklyReportsClient({ initialWeeksData, studentName, userId }: P
     []
   );
 
-  // ── Print one week ───────────────────────────────────────────
   const handlePrintOne = (weekNo: number) => {
     const el = printRefs.current.get(weekNo);
     if (!el) return;
     printViaIframe(`<div class="print-page">${el.outerHTML}</div>`);
   };
 
-  // ── Print all generated weeks ────────────────────────────────
   const handlePrintAll = () => {
     const sorted = Array.from(printRefs.current.entries()).sort(([a], [b]) => a - b);
     if (!sorted.length) return;
@@ -179,7 +156,6 @@ export function WeeklyReportsClient({ initialWeeksData, studentName, userId }: P
     printViaIframe(allHtml);
   };
 
-  // ── Generate AI for one week ─────────────────────────────────
   const handleGenerate = async (weekNo: number) => {
     setGeneratingWeek(weekNo);
     setErrors((prev) => ({ ...prev, [weekNo]: "" }));
@@ -204,8 +180,7 @@ export function WeeklyReportsClient({ initialWeeksData, studentName, userId }: P
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
-      {/* Page header */}
-      <div className="flex justify-between items-center mb-3">
+      <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-2xl font-bold">AI Weekly Reports</h1>
           <p className="text-muted-foreground text-sm">
@@ -229,18 +204,6 @@ export function WeeklyReportsClient({ initialWeeksData, studentName, userId }: P
         </Button>
       </div>
 
-      {/* Tip banner about browser headers/footers */}
-      <div className="flex items-start gap-2 bg-blue-50 border border-blue-200 text-blue-800 text-xs rounded-md px-3 py-2 mb-6">
-        <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-        <span>
-          <strong>For clean prints:</strong> In the browser print dialog, set{" "}
-          <strong>Margins → None</strong> and uncheck{" "}
-          <strong>Headers and footers</strong> to remove the date/time and page
-          URL from the output.
-        </span>
-      </div>
-
-      {/* Report list */}
       {weeksData.length === 0 ? (
         <p className="text-center text-muted-foreground mt-16">
           Not enough working days logged yet to generate a report.
