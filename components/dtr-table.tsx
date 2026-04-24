@@ -44,15 +44,6 @@ function formatPrintTime(time24?: string): string {
   return `${String(dh).padStart(2, '0')}:${String(m).padStart(2, '0')} ${ampm}`;
 }
 
-// Shrinks font for longer accomplishment text so it fits the fixed-height cell
-function accFontSize(text: string): string {
-  const len = text.length;
-  if (len > 160) return "7.5px";
-  if (len > 110) return "8.5px";
-  if (len > 60)  return "9.5px";
-  return "10.5px";
-}
-
 const getMins = (t?: string) => {
   if (!t) return 0;
   const [h, m] = t.split(":").map(Number);
@@ -206,12 +197,22 @@ export function DTRTable({
 
   return (
     <div className="space-y-4">
-      {/* ─── FIX 1: suppress browser print header/footer (URL bar, date, page #) ─── */}
-      {/* Setting @page margin to 0 removes the browser's margin area where those
-          elements live. We then add padding directly to the print document div. */}
+      {/*
+        PRINT STYLES
+        ─────────────────────────────────────────────────────────────────────
+        • size: letter  → 8.5 × 11 in (US Letter, not A4)
+        • margin: 0     → removes browser header/footer chrome (URL, date, page #)
+        • padding on #dtr-print-document handles the actual page margins
+        • The 22mm bottom padding + the 14mm footer zone together reserve
+          ~36mm at the foot of the page — plenty of room for a stamped /
+          hand-written page number in a second print pass.
+      */}
       <style dangerouslySetInnerHTML={{ __html: `
   @media print {
-    @page { margin: 0; size: auto; }
+    @page {
+      size: letter;
+      margin: 0;
+    }
     body { margin: 0; padding: 0; background: white; }
 
     /* Hide EVERYTHING on the page… */
@@ -227,6 +228,13 @@ export function DTRTable({
       top: 0;
       left: 0;
       width: 100%;
+    }
+
+    /* Let accomplishment cells grow with their content instead of clipping */
+    #dtr-print-document .acc-cell {
+      white-space: pre-wrap;
+      word-break: break-word;
+      overflow-wrap: break-word;
     }
   }
 `}} />
@@ -461,10 +469,27 @@ export function DTRTable({
       {/* ========================================= */}
       {/* PRINT VIEW (Strict Word Document Layout)  */}
       {/* ========================================= */}
+      {/*
+        Padding breakdown (US Letter = 8.5 × 11 in):
+          top:    15mm  — standard top margin
+          left:   15mm  — standard left margin
+          right:  15mm  — standard right margin
+          bottom: 22mm  — content ends here
+        
+        Page number footer zone (14mm) sits below the 22mm content padding,
+        leaving a clear 14mm band at the very foot of the page for a page
+        number to be stamped / printed in a second pass.
+      */}
       <div
         id="dtr-print-document"
         className="hidden print:block w-full bg-white text-black mx-auto"
-        style={{ padding: "15mm 15mm 12mm", fontFamily: "'Century Gothic', CenturyGothic, AppleGothic, sans-serif" }}
+        style={{
+          padding: "15mm 15mm 22mm",
+          fontFamily: "'Century Gothic', CenturyGothic, AppleGothic, sans-serif",
+          // Reserve a 14mm footer zone so content never bleeds into it
+          paddingBottom: "22mm",
+          boxSizing: "border-box",
+        }}
       >
         {/* Title */}
         <h1
@@ -517,10 +542,37 @@ export function DTRTable({
         </div>
 
         {/* ─── Main table ─── */}
+        {/*
+          The accomplishment column (acc-cell) uses:
+            white-space: pre-wrap   → honours line breaks in text
+            word-break: break-word  → breaks long unspaced strings
+            overflow-wrap: anywhere → last-resort mid-word break
+          Row height is NOT fixed, so rows grow naturally with content.
+          The font stays at 8pt throughout — no shrinking hack.
+        */}
         <table
           className="w-full border-collapse border border-black mb-3 text-center"
-          style={{ fontSize: "8pt", fontFamily: "'Century Gothic', CenturyGothic, AppleGothic, sans-serif" }}
+          style={{ fontSize: "8pt", fontFamily: "'Century Gothic', CenturyGothic, AppleGothic, sans-serif", tableLayout: "fixed" }}
         >
+          <colgroup>
+            {/* Date */}
+            <col style={{ width: "10%" }} />
+            {/* Morning IN / OUT */}
+            <col style={{ width: "7%" }} />
+            <col style={{ width: "7%" }} />
+            {/* Afternoon IN / OUT */}
+            <col style={{ width: "7%" }} />
+            <col style={{ width: "7%" }} />
+            {/* Overtime IN / OUT */}
+            <col style={{ width: "7%" }} />
+            <col style={{ width: "7%" }} />
+            {/* Accomplishments — widest column */}
+            <col style={{ width: "30%" }} />
+            {/* Total Hours */}
+            <col style={{ width: "8%" }} />
+            {/* Verified By */}
+            <col style={{ width: "10%" }} />
+          </colgroup>
           <thead>
             <tr>
               <th className="border border-black p-1 align-middle font-bold">Date</th>
@@ -533,9 +585,9 @@ export function DTRTable({
               <th className="border border-black p-1 font-bold" colSpan={2}>
                 Overtime<br /><span className="font-bold" style={{ fontSize: "7pt" }}>IN / OUT</span>
               </th>
-              <th className="border border-black p-1 align-middle font-bold" style={{ width: "28%" }}>Accomplishment/s</th>
-              <th className="border border-black p-1 align-middle font-bold" style={{ width: "7%" }}>Total Hours</th>
-              <th className="border border-black p-1 align-middle font-bold" style={{ width: "10%" }}>Verified By</th>
+              <th className="border border-black p-1 align-middle font-bold">Accomplishment/s</th>
+              <th className="border border-black p-1 align-middle font-bold">Total Hours</th>
+              <th className="border border-black p-1 align-middle font-bold">Verified By</th>
             </tr>
           </thead>
           <tbody>
@@ -555,16 +607,26 @@ export function DTRTable({
               return (
                 <tr key={`print-${date}`}>
                   <td className="border border-black p-1 text-left whitespace-nowrap">{dateLabel}</td>
-                  {/* ↓ whitespace-nowrap prevents "07:46\nAM" wrapping in narrow columns */}
                   <td className="border border-black p-1 whitespace-nowrap">{showDashes ? dash : formatPrintTime(row.morningIn)}</td>
                   <td className="border border-black p-1 whitespace-nowrap">{showDashes ? dash : formatPrintTime(row.morningOut)}</td>
                   <td className="border border-black p-1 whitespace-nowrap">{showDashes ? dash : formatPrintTime(row.afternoonIn)}</td>
                   <td className="border border-black p-1 whitespace-nowrap">{showDashes ? dash : formatPrintTime(row.afternoonOut)}</td>
                   <td className="border border-black p-1 whitespace-nowrap">{showDashes ? dash : formatPrintTime(row.overtimeIn)}</td>
                   <td className="border border-black p-1 whitespace-nowrap">{showDashes ? dash : formatPrintTime(row.overtimeOut)}</td>
+                  {/*
+                    acc-cell: no fixed height, wraps naturally.
+                    text-align: left so long accomplishment text reads cleanly.
+                  */}
                   <td
-                    className="border border-black text-left break-words leading-tight"
-                    style={{ fontSize: accFontSize(accomplishmentLabel), padding: "1px 3px" }}
+                    className="acc-cell border border-black text-left"
+                    style={{
+                      padding: "2px 4px",
+                      whiteSpace: "pre-wrap",
+                      wordBreak: "break-word",
+                      overflowWrap: "anywhere",
+                      lineHeight: "1.35",
+                      verticalAlign: "top",
+                    }}
                   >
                     {accomplishmentLabel}
                   </td>
@@ -600,7 +662,7 @@ export function DTRTable({
               <td className="border border-black p-1.5"></td>
             </tr>
 
-            {/* Previous / Total / Remaining summary row — 6 cells: label | value × 3 */}
+            {/* Previous / Total / Remaining summary row */}
             <tr>
               <td colSpan={2} className="border border-black p-1.5 text-right font-bold whitespace-nowrap">
                 Previous Hours Worked:
@@ -669,6 +731,29 @@ export function DTRTable({
           </div>
 
         </div>
+
+        {/*
+          ─── PAGE NUMBER FOOTER ZONE ────────────────────────────────────────
+          This element sits at the absolute bottom of the printed page.
+          It is intentionally left blank — the 14mm height gives you a clear
+          strip to stamp or print a page number in a second pass without
+          overlapping any form content.
+
+          The top border acts as a visual separator so it's easy to align
+          whatever you print on top of it later.
+        */}
+        <div
+          aria-hidden="true"
+          style={{
+            position: "fixed",
+            bottom: 0,
+            left: 0,
+            width: "100%",
+            height: "14mm",
+            borderTop: "0.5pt solid #ccc",
+            // No content — intentionally blank for page number overlay
+          }}
+        />
       </div>
     </div>
   );
