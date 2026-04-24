@@ -206,22 +206,14 @@ export function DTRTable({
 
   return (
     <div className="space-y-4">
-      {/* ─── FIX 1: suppress browser print header/footer (URL bar, date, page #) ─── */}
-      {/* Setting @page margin to 0 removes the browser's margin area where those
-          elements live. We then add padding directly to the print document div. */}
+      {/* ─── Suppress browser print header/footer (URL bar, date, page #) ─── */}
       <style dangerouslySetInnerHTML={{ __html: `
   @media print {
     @page { margin: 0; size: auto; }
     body { margin: 0; padding: 0; background: white; }
-
-    /* Hide EVERYTHING on the page… */
     body * { visibility: hidden; }
-
-    /* …then reveal only the print document and its children */
     #dtr-print-document,
     #dtr-print-document * { visibility: visible; }
-
-    /* Pin it to the top-left corner of the page */
     #dtr-print-document {
       position: fixed;
       top: 0;
@@ -519,23 +511,52 @@ export function DTRTable({
         {/* ─── Main table ─── */}
         <table
           className="w-full border-collapse border border-black mb-3 text-center"
-          style={{ fontSize: "8pt", fontFamily: "'Century Gothic', CenturyGothic, AppleGothic, sans-serif" }}
+          style={{ fontSize: "8pt", fontFamily: "'Century Gothic', CenturyGothic, AppleGothic, sans-serif", borderSpacing: 0 }}
         >
           <thead>
             <tr>
-              <th className="border border-black p-1 align-middle font-bold">Date</th>
-              <th className="border border-black p-1 font-bold" colSpan={2}>
-                Morning<br /><span className="font-bold" style={{ fontSize: "7pt" }}>IN / OUT</span>
+              {/* ── Date header: vertically centered, no excess padding ── */}
+              <th
+                className="border border-black font-bold align-middle"
+                style={{ padding: "2px 4px" }}
+              >
+                Date
               </th>
-              <th className="border border-black p-1 font-bold" colSpan={2}>
-                Afternoon<br /><span className="font-bold" style={{ fontSize: "7pt" }}>IN / OUT</span>
+
+              {/* ── Morning / Afternoon / Overtime: label and IN/OUT stacked tightly ── */}
+              {(["Morning", "Afternoon", "Overtime"] as const).map((label) => (
+                <th
+                  key={label}
+                  className="border border-black font-bold"
+                  colSpan={2}
+                  style={{ padding: "0", lineHeight: 1 }}
+                >
+                  {/* Outer wrapper collapses vertical space between the two lines */}
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 0, padding: "2px 4px" }}>
+                    <span>{label}</span>
+                    <span style={{ fontSize: "7pt", fontWeight: "bold", marginTop: "1px" }}>IN / OUT</span>
+                  </div>
+                </th>
+              ))}
+
+              <th
+                className="border border-black font-bold align-middle"
+                style={{ width: "28%", padding: "2px 4px" }}
+              >
+                Accomplishment/s
               </th>
-              <th className="border border-black p-1 font-bold" colSpan={2}>
-                Overtime<br /><span className="font-bold" style={{ fontSize: "7pt" }}>IN / OUT</span>
+              <th
+                className="border border-black font-bold align-middle"
+                style={{ width: "7%", padding: "2px 4px" }}
+              >
+                Total Hours
               </th>
-              <th className="border border-black p-1 align-middle font-bold" style={{ width: "28%" }}>Accomplishment/s</th>
-              <th className="border border-black p-1 align-middle font-bold" style={{ width: "7%" }}>Total Hours</th>
-              <th className="border border-black p-1 align-middle font-bold" style={{ width: "10%" }}>Verified By</th>
+              <th
+                className="border border-black font-bold align-middle"
+                style={{ width: "10%", padding: "2px 4px" }}
+              >
+                Verified By
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -552,72 +573,67 @@ export function DTRTable({
               const accomplishmentLabel = weekend ? dayName : row.accomplishments || "";
               const dash = "———";
 
+              // Shared compact cell style for time/data cells
+              const tdStyle: React.CSSProperties = { padding: "1px 3px", whiteSpace: "nowrap" };
+
               return (
                 <tr key={`print-${date}`}>
-                  <td className="border border-black p-1 text-left whitespace-nowrap">{dateLabel}</td>
-                  {/* ↓ whitespace-nowrap prevents "07:46\nAM" wrapping in narrow columns */}
-                  <td className="border border-black p-1 whitespace-nowrap">{showDashes ? dash : formatPrintTime(row.morningIn)}</td>
-                  <td className="border border-black p-1 whitespace-nowrap">{showDashes ? dash : formatPrintTime(row.morningOut)}</td>
-                  <td className="border border-black p-1 whitespace-nowrap">{showDashes ? dash : formatPrintTime(row.afternoonIn)}</td>
-                  <td className="border border-black p-1 whitespace-nowrap">{showDashes ? dash : formatPrintTime(row.afternoonOut)}</td>
-                  <td className="border border-black p-1 whitespace-nowrap">{showDashes ? dash : formatPrintTime(row.overtimeIn)}</td>
-                  <td className="border border-black p-1 whitespace-nowrap">{showDashes ? dash : formatPrintTime(row.overtimeOut)}</td>
+                  <td className="border border-black text-left" style={tdStyle}>{dateLabel}</td>
+                  <td className="border border-black" style={tdStyle}>{showDashes ? dash : formatPrintTime(row.morningIn)}</td>
+                  <td className="border border-black" style={tdStyle}>{showDashes ? dash : formatPrintTime(row.morningOut)}</td>
+                  <td className="border border-black" style={tdStyle}>{showDashes ? dash : formatPrintTime(row.afternoonIn)}</td>
+                  <td className="border border-black" style={tdStyle}>{showDashes ? dash : formatPrintTime(row.afternoonOut)}</td>
+                  <td className="border border-black" style={tdStyle}>{showDashes ? dash : formatPrintTime(row.overtimeIn)}</td>
+                  <td className="border border-black" style={tdStyle}>{showDashes ? dash : formatPrintTime(row.overtimeOut)}</td>
                   <td
                     className="border border-black text-left break-words leading-tight"
                     style={{ fontSize: accFontSize(accomplishmentLabel), padding: "1px 3px" }}
                   >
                     {accomplishmentLabel}
                   </td>
-                  <td className="border border-black p-1 font-semibold">
+                  <td className="border border-black font-semibold" style={tdStyle}>
                     {hours > 0 ? hours.toFixed(2) : ""}
                   </td>
-                  <td className="border border-black p-1">{row.verifiedBy}</td>
+                  <td className="border border-black" style={tdStyle}>{row.verifiedBy}</td>
                 </tr>
               );
             })}
 
             {Array.from({ length: blankPrintRows }).map((_, i) => (
-              <tr key={`blank-${i}`} style={{ height: "22px" }}>
-                <td className="border border-black p-1">&nbsp;</td>
-                <td className="border border-black p-1"></td>
-                <td className="border border-black p-1"></td>
-                <td className="border border-black p-1"></td>
-                <td className="border border-black p-1"></td>
-                <td className="border border-black p-1"></td>
-                <td className="border border-black p-1"></td>
-                <td className="border border-black p-1"></td>
-                <td className="border border-black p-1"></td>
-                <td className="border border-black p-1"></td>
+              <tr key={`blank-${i}`} style={{ height: "18px" }}>
+                {Array.from({ length: 10 }).map((_, j) => (
+                  <td key={j} className="border border-black" style={{ padding: "1px 3px" }}>&nbsp;</td>
+                ))}
               </tr>
             ))}
 
             {/* TOTAL HOURS row */}
             <tr>
-              <td colSpan={8} className="border border-black p-1.5 text-right font-bold tracking-widest uppercase">
+              <td colSpan={8} className="border border-black text-right font-bold tracking-widest uppercase" style={{ padding: "2px 6px" }}>
                 TOTAL HOURS:
               </td>
-              <td className="border border-black p-1.5 font-bold">{totalHoursThisForm.toFixed(2)}</td>
-              <td className="border border-black p-1.5"></td>
+              <td className="border border-black font-bold" style={{ padding: "2px 3px" }}>{totalHoursThisForm.toFixed(2)}</td>
+              <td className="border border-black" style={{ padding: "2px 3px" }}></td>
             </tr>
 
-            {/* Previous / Total / Remaining summary row — 6 cells: label | value × 3 */}
+            {/* Previous / Total / Remaining summary row */}
             <tr>
-              <td colSpan={2} className="border border-black p-1.5 text-right font-bold whitespace-nowrap">
+              <td colSpan={2} className="border border-black text-right font-bold whitespace-nowrap" style={{ padding: "2px 6px" }}>
                 Previous Hours Worked:
               </td>
-              <td colSpan={1} className="border border-black p-1.5 text-center font-normal">
+              <td colSpan={1} className="border border-black text-center font-normal" style={{ padding: "2px 3px" }}>
                 {previousHours.toFixed(2)}
               </td>
-              <td colSpan={2} className="border border-black p-1.5 text-right font-bold whitespace-nowrap">
+              <td colSpan={2} className="border border-black text-right font-bold whitespace-nowrap" style={{ padding: "2px 6px" }}>
                 Total Hours Worked:
               </td>
-              <td colSpan={2} className="border border-black p-1.5 text-center font-normal">
+              <td colSpan={2} className="border border-black text-center font-normal" style={{ padding: "2px 3px" }}>
                 {totalWorked.toFixed(2)}
               </td>
-              <td colSpan={2} className="border border-black p-1.5 text-right font-bold whitespace-nowrap">
+              <td colSpan={2} className="border border-black text-right font-bold whitespace-nowrap" style={{ padding: "2px 6px" }}>
                 Remaining Hours:
               </td>
-              <td colSpan={1} className="border border-black p-1.5 text-center font-normal">
+              <td colSpan={1} className="border border-black text-center font-normal" style={{ padding: "2px 3px" }}>
                 {remaining.toFixed(2)}
               </td>
             </tr>
