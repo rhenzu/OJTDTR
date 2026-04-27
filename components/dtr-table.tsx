@@ -456,7 +456,7 @@ export function DTRTable({
       <div
         id="dtr-print-document"
         className="hidden print:block w-full bg-white text-black mx-auto"
-        style={{ padding: "0.5in 0.5in 0.5in 1.5in", fontFamily: "'Century Gothic', CenturyGothic, AppleGothic, sans-serif" }}
+        style={{ padding: "0.5in 0.5in 0.5in 1in", fontFamily: "'Century Gothic', CenturyGothic, AppleGothic, sans-serif" }}
       >
         {/* Title */}
         <h1
