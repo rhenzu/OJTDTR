@@ -209,7 +209,7 @@ export function DTRTable({
       {/* ─── Print margins: 1in top/right/bottom, 1.5in left ─── */}
       <style dangerouslySetInnerHTML={{ __html: `
   @media print {
-    @page { margin: 1in 1in 1in 1.5in; size: auto; }
+    @page { margin: 0.5in 0.5in 0.5in 1in; size: auto; }
     body { margin: 0; padding: 0; background: white; }
     body * { visibility: hidden; }
     #dtr-print-document,
