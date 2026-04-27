@@ -209,7 +209,7 @@ export function DTRTable({
       {/* ─── Print margins: 1in top/right/bottom, 1.5in left ─── */}
       <style dangerouslySetInnerHTML={{ __html: `
   @media print {
-    @page { margin: 0.5in 0.5in 0.5in 1in; size: auto; }
+    @page { margin: 0; size: letter; }
     body { margin: 0; padding: 0; background: white; }
     body * { visibility: hidden; }
     #dtr-print-document,
@@ -456,7 +456,7 @@ export function DTRTable({
       <div
         id="dtr-print-document"
         className="hidden print:block w-full bg-white text-black mx-auto"
-        style={{ padding: 0, fontFamily: "'Century Gothic', CenturyGothic, AppleGothic, sans-serif" }}
+        style={{ padding: "0.5in 0.5in 0.5in 1.5in", fontFamily: "'Century Gothic', CenturyGothic, AppleGothic, sans-serif" }}
       >
         {/* Title */}
         <h1
