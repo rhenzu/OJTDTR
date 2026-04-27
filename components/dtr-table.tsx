@@ -206,10 +206,10 @@ export function DTRTable({
 
   return (
     <div className="space-y-4">
-      {/* ─── Suppress browser print header/footer (URL bar, date, page #) ─── */}
+      {/* ─── Print margins: 1in top/right/bottom, 1.5in left ─── */}
       <style dangerouslySetInnerHTML={{ __html: `
   @media print {
-    @page { margin: 0; size: auto; }
+    @page { margin: 1in 1in 1in 1.5in; size: auto; }
     body { margin: 0; padding: 0; background: white; }
     body * { visibility: hidden; }
     #dtr-print-document,
@@ -456,7 +456,7 @@ export function DTRTable({
       <div
         id="dtr-print-document"
         className="hidden print:block w-full bg-white text-black mx-auto"
-        style={{ padding: "15mm 15mm 12mm", fontFamily: "'Century Gothic', CenturyGothic, AppleGothic, sans-serif" }}
+        style={{ padding: 0, fontFamily: "'Century Gothic', CenturyGothic, AppleGothic, sans-serif" }}
       >
         {/* Title */}
         <h1
@@ -515,7 +515,6 @@ export function DTRTable({
         >
           <thead>
             <tr>
-              {/* ── Date header: vertically centered, no excess padding ── */}
               <th
                 className="border border-black font-bold align-middle"
                 style={{ padding: "2px 4px" }}
@@ -523,7 +522,6 @@ export function DTRTable({
                 Date
               </th>
 
-              {/* ── Morning / Afternoon / Overtime: label and IN/OUT stacked tightly ── */}
               {(["Morning", "Afternoon", "Overtime"] as const).map((label) => (
                 <th
                   key={label}
@@ -531,7 +529,6 @@ export function DTRTable({
                   colSpan={2}
                   style={{ padding: "0", lineHeight: 1 }}
                 >
-                  {/* Outer wrapper collapses vertical space between the two lines */}
                   <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 0, padding: "2px 4px" }}>
                     <span>{label}</span>
                     <span style={{ fontSize: "7pt", fontWeight: "bold", marginTop: "1px" }}>IN / OUT</span>
@@ -573,7 +570,6 @@ export function DTRTable({
               const accomplishmentLabel = weekend ? dayName : row.accomplishments || "";
               const dash = "———";
 
-              // Shared compact cell style for time/data cells
               const tdStyle: React.CSSProperties = { padding: "1px 3px", whiteSpace: "nowrap" };
 
               return (
