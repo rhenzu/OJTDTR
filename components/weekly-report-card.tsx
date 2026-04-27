@@ -71,7 +71,7 @@ export function WeeklyReportCard({
           @page { margin: 0; size: letter; }
           body { margin: 0; padding: 0; }
           #weekly-print-document {
-            padding: 0.5in 0.5in 0.5in 1in !important;
+            padding: 0.3in 0.3in 0.3in 0.5in !important;
             box-shadow: none !important;
             border: none !important;
             border-radius: 0 !important;
