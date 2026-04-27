@@ -64,8 +64,23 @@ export function WeeklyReportCard({
   return (
     <div className="relative mb-8 group">
 
+      {/* ── Print styles: zero @page margin kills browser URL/date headers,
+              padding on the card itself provides the real margins ── */}
+      <style dangerouslySetInnerHTML={{ __html: `
+        @media print {
+          @page { margin: 0; size: letter; }
+          body { margin: 0; padding: 0; }
+          #weekly-print-document {
+            padding: 0.5in 0.5in 0.5in 1in !important;
+            box-shadow: none !important;
+            border: none !important;
+            border-radius: 0 !important;
+          }
+        }
+      `}} />
+
       {/* ── Controls bar (visible on hover, never printed) ────── */}
-      <div className="absolute top-2 right-2 z-10 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+      <div className="absolute top-2 right-2 z-10 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity print:hidden">
 
         {/* Print this week */}
         <Button
@@ -126,6 +141,7 @@ export function WeeklyReportCard({
           A4 width on screen = 794 px @ 96 dpi.
       ──────────────────────────────────────────────────────────── */}
       <div
+        id="weekly-print-document"
         ref={registerRef}
         className="bg-white border border-gray-300 shadow-sm rounded-md mx-auto w-full max-w-[794px]"
         style={{ fontFamily: '"Century Gothic", "Century Gothic Paneuropean", sans-serif' }}
@@ -134,7 +150,7 @@ export function WeeklyReportCard({
 
           {/* Incomplete warning (informational only, won't show in print window) */}
           {!isComplete && (
-            <div className="mb-3 text-xs font-sans font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-3 py-2 rounded">
+            <div className="mb-3 text-xs font-sans font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-3 py-2 rounded print:hidden">
               This week has fewer than 5 logged days. Keep logging to complete it.
             </div>
           )}
