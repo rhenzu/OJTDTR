@@ -10,8 +10,54 @@ import { revalidatePath } from "next/cache";
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
 // ─────────────────────────────────────────────────────────────
-// FETCH only — no AI generation. Returns week structure + any
-// already-saved aiData from the DB.
+// Calendar-week helpers
+// ─────────────────────────────────────────────────────────────
+
+/** Returns the ISO date string (YYYY-MM-DD) of the Monday of the
+ *  calendar week that contains `dateStr`. */
+function getWeekMonday(dateStr: string): string {
+  const date = new Date(dateStr + "T00:00:00");
+  const day = date.getDay(); // 0 = Sun … 6 = Sat
+  const diff = day === 0 ? -6 : 1 - day; // shift to Monday
+  const monday = new Date(date);
+  monday.setDate(date.getDate() + diff);
+  return monday.toISOString().split("T")[0];
+}
+
+/** Returns the ISO date string of the Friday that is 4 days after
+ *  the given Monday string. */
+function getWeekFriday(mondayStr: string): string {
+  const monday = new Date(mondayStr + "T00:00:00");
+  const friday = new Date(monday);
+  friday.setDate(monday.getDate() + 4);
+  return friday.toISOString().split("T")[0];
+}
+
+/** Groups an array of day records (sorted asc by date) into calendar
+ *  weeks.  Returns an array of { monday, friday, days } objects,
+ *  also sorted ascending. */
+function groupByCalendarWeek(records: any[]): {
+  monday: string;
+  friday: string;
+  days: any[];
+}[] {
+  const map = new Map<string, any[]>();
+  for (const r of records) {
+    const monday = getWeekMonday(r.date as string);
+    if (!map.has(monday)) map.set(monday, []);
+    map.get(monday)!.push(r);
+  }
+  return Array.from(map.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([monday, days]) => ({
+      monday,
+      friday: getWeekFriday(monday),
+      days,
+    }));
+}
+
+// ─────────────────────────────────────────────────────────────
+// FETCH only — no AI generation.
 // ─────────────────────────────────────────────────────────────
 export async function getWeeksData(userId: string) {
   await dbConnect();
@@ -30,27 +76,31 @@ export async function getWeeksData(userId: string) {
     (r) => r.totalHours > 0 && r.accomplishments?.trim()
   );
 
-  const chunks: any[][] = [];
-  for (let i = 0; i < validDays.length; i += 5) {
-    chunks.push(validDays.slice(i, i + 5));
-  }
+  const weeks = groupByCalendarWeek(validDays);
 
   const existingReports = await WeeklyReportModel.find({ userId }).lean();
   const reportMap = new Map((existingReports as any[]).map((r) => [r.weekNo, r]));
 
-  return chunks.map((chunk, index) => {
+  const today = new Date().toISOString().split("T")[0];
+
+  return weeks.map(({ monday, friday, days }, index) => {
     const weekNo = index + 1;
     const existing = reportMap.get(weekNo) as any;
-    const rawText = chunk
+    const rawText = days
       .map((r: any) => `Date: ${r.date} - ${r.accomplishments}`)
       .join("\n");
+
+    // A week is "complete" once its Friday has passed
+    const isComplete = today > friday;
 
     return {
       _id: existing?._id?.toString() ?? null,
       weekNo,
-      startDate: chunk[0].date as string,
-      endDate: chunk[chunk.length - 1].date as string,
-      isComplete: chunk.length === 5,
+      startDate: days[0].date as string,
+      endDate: days[days.length - 1].date as string,
+      weekStart: monday,   // actual Mon of this calendar week
+      weekEnd: friday,     // actual Fri of this calendar week
+      isComplete,
       rawText,
       aiData: existing?.aiData ?? null,
     };
@@ -77,18 +127,17 @@ export async function generateSingleWeekReport(userId: string, weekNo: number) {
     (r) => r.totalHours > 0 && r.accomplishments?.trim()
   );
 
-  const chunks: any[][] = [];
-  for (let i = 0; i < validDays.length; i += 5) {
-    chunks.push(validDays.slice(i, i + 5));
-  }
+  const weeks = groupByCalendarWeek(validDays);
+  const week = weeks[weekNo - 1];
+  if (!week) throw new Error(`No data found for Week ${weekNo}.`);
 
-  const chunk = chunks[weekNo - 1];
-  if (!chunk) throw new Error(`No data found for Week ${weekNo}.`);
+  const { monday, friday, days } = week;
+  const today = new Date().toISOString().split("T")[0];
+  const isComplete = today > friday;
 
-  const startDate = chunk[0].date as string;
-  const endDate = chunk[chunk.length - 1].date as string;
-  const isComplete = chunk.length === 5;
-  const rawText = chunk
+  const startDate = days[0].date as string;
+  const endDate = days[days.length - 1].date as string;
+  const rawText = days
     .map((r: any) => `Date: ${r.date} - ${r.accomplishments}`)
     .join("\n");
 
@@ -97,7 +146,7 @@ export async function generateSingleWeekReport(userId: string, weekNo: number) {
 
   const saved = await WeeklyReportModel.findOneAndUpdate(
     { userId, weekNo },
-    { startDate, endDate, isComplete, rawText, aiData },
+    { startDate, endDate, weekStart: monday, weekEnd: friday, isComplete, rawText, aiData },
     { upsert: true, new: true }
   );
 
@@ -124,7 +173,7 @@ export async function regenerateWeeklyReport(reportId: string, customPrompt?: st
 }
 
 // ─────────────────────────────────────────────────────────────
-// Internal AI helper — compact output sized for A4.
+// Internal AI helper
 // ─────────────────────────────────────────────────────────────
 async function generateReportContentWithAI(rawText: string, customPrompt?: string) {
   const prompt = `
@@ -161,13 +210,9 @@ Example structure:
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
     const result = await model.generateContent(prompt);
     let text = result.response.text().trim();
-
-    // Strip markdown fences if present
     text = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
-
     const parsed = JSON.parse(text);
 
-    // Validate all required keys exist
     const required = [
       "dutiesPerformed",
       "newTrainings",
@@ -182,13 +227,10 @@ Example structure:
       if (!(key in parsed)) throw new Error(`AI response missing key: ${key}`);
     }
 
-    // Enforce max 3 bullet points
-    if (Array.isArray(parsed.proposedActivities)) {
+    if (Array.isArray(parsed.proposedActivities))
       parsed.proposedActivities = parsed.proposedActivities.slice(0, 3);
-    }
-    if (Array.isArray(parsed.actualAccomplishments)) {
+    if (Array.isArray(parsed.actualAccomplishments))
       parsed.actualAccomplishments = parsed.actualAccomplishments.slice(0, 3);
-    }
 
     return parsed;
   } catch (error) {
