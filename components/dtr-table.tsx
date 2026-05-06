@@ -4,7 +4,7 @@ import { useState } from "react";
 import { format, parseISO, isWeekend } from "date-fns";
 import { toZonedTime } from "date-fns-tz";
 import toast from "react-hot-toast";
-import { Save, Printer, Zap, Eraser, UserMinus, Coffee } from "lucide-react";
+import { Save, Printer, Zap, Eraser, UserMinus, Coffee, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -14,7 +14,6 @@ import type { IDailyRecord, IDTRForm } from "@/types";
 
 const PH_TZ = "Asia/Manila";
 
-// Always render exactly this many data rows in the print table
 const PRINT_ROWS = 16;
 
 function formatSignatureDate(dateStr: string): string {
@@ -25,26 +24,24 @@ function formatSignatureDate(dateStr: string): string {
 
 function isoToTime(iso: string | null | undefined): string {
   if (!iso) return "";
-  try { return format(toZonedTime(parseISO(iso), PH_TZ), "HH:mm"); } 
+  try { return format(toZonedTime(parseISO(iso), PH_TZ), "HH:mm"); }
   catch { return ""; }
 }
 
 function fmtDisplay(iso: string | null | undefined): string {
   if (!iso) return "";
-  try { return format(toZonedTime(parseISO(iso), PH_TZ), "hh:mm a"); } 
+  try { return format(toZonedTime(parseISO(iso), PH_TZ), "hh:mm a"); }
   catch { return ""; }
 }
 
-// Formats "14:30" to "02:30 PM" specifically for the physical printed document
 function formatPrintTime(time24?: string): string {
   if (!time24) return "";
   const [h, m] = time24.split(":").map(Number);
-  const ampm = h >= 12 ? 'PM' : 'AM';
+  const ampm = h >= 12 ? "PM" : "AM";
   const dh = h % 12 || 12;
-  return `${String(dh).padStart(2, '0')}:${String(m).padStart(2, '0')} ${ampm}`;
+  return `${String(dh).padStart(2, "0")}:${String(m).padStart(2, "0")} ${ampm}`;
 }
 
-// Shrinks font for longer accomplishment text so it fits the fixed-height cell
 function accFontSize(text: string): string {
   const len = text.length;
   if (len > 160) return "7.5px";
@@ -102,6 +99,7 @@ export function DTRTable({
   const [supervisorDate, setSupervisorDate] = useState(form?.supervisorSignDate || "");
   const [studentDate, setStudentDate] = useState(form?.studentSignDate || "");
   const [saving, setSaving] = useState(false);
+  const [fieldWork, setFieldWork] = useState(false);
 
   const update = (date: string, field: keyof RowData, val: string) => {
     setRows((prev) => ({ ...prev, [date]: { ...prev[date], [field]: val } }));
@@ -125,8 +123,9 @@ export function DTRTable({
         totalMins += Math.max(0, getMins(row.overtimeOut) - getMins(row.overtimeIn));
       }
     }
-    
-    return Math.min(parseFloat((totalMins / 60).toFixed(2)), 8);
+
+    const raw = parseFloat((totalMins / 60).toFixed(2));
+    return fieldWork ? raw : Math.min(raw, 8);
   };
 
   const handleQuickFillRow = (date: string) => {
@@ -201,12 +200,10 @@ export function DTRTable({
     finally { setSaving(false); }
   };
 
-  // How many blank padding rows to add so the print table always has PRINT_ROWS data rows
   const blankPrintRows = Math.max(0, PRINT_ROWS - days.length);
 
   return (
     <div className="space-y-4">
-      {/* ─── Print margins: 1in top/right/bottom, 1.5in left ─── */}
       <style dangerouslySetInnerHTML={{ __html: `
   @media print {
     @page { margin: 0; size: letter; }
@@ -226,14 +223,34 @@ export function DTRTable({
       {/* Action buttons (Hidden on Print) */}
       {!readOnly && (
         <div className="flex gap-2 justify-end print:hidden flex-wrap">
-          <Button variant="secondary" onClick={handleFillAllEmpty} className="gap-2 bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 border-amber-500/20">
+          {/* Field Work Toggle */}
+          <Button
+            variant={fieldWork ? "default" : "outline"}
+            onClick={() => setFieldWork((v) => !v)}
+            className={`gap-2 ${
+              fieldWork
+                ? "bg-violet-600 text-white hover:bg-violet-700 border-violet-600"
+                : "border-violet-500/40 text-violet-600 hover:bg-violet-500/10"
+            }`}
+          >
+            <MapPin className="w-4 h-4" />
+            Field Work {fieldWork ? "ON" : "OFF"}
+          </Button>
+
+          <Button
+            variant="secondary"
+            onClick={handleFillAllEmpty}
+            className="gap-2 bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 border-amber-500/20"
+          >
             <Zap className="w-4 h-4" /> Auto-Fill Empty Weekdays (8h)
           </Button>
           <Button variant="outline" onClick={() => window.print()} className="gap-2">
             <Printer className="w-4 h-4" /> Print Document
           </Button>
           <Button onClick={handleSave} disabled={saving} className="gap-2">
-            {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="w-4 h-4" />}
+            {saving
+              ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              : <Save className="w-4 h-4" />}
             Save All Changes
           </Button>
         </div>
@@ -256,9 +273,16 @@ export function DTRTable({
             </div>
           </div>
           <div className="mt-3 pt-3 border-t border-border">
-            <p className="text-sm text-muted-foreground">
-              <span className="font-semibold text-foreground">Period: </span>{periodTitle}
-            </p>
+            <div className="flex items-center gap-3">
+              <p className="text-sm text-muted-foreground">
+                <span className="font-semibold text-foreground">Period: </span>{periodTitle}
+              </p>
+              {fieldWork && (
+                <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">
+                  <MapPin className="w-3 h-3" /> Field Work — no 8h cap
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
@@ -299,11 +323,14 @@ export function DTRTable({
 
                 const timeCell = (field: keyof RowData, iso?: string | null) =>
                   readOnly ? (
-                    <td className="border border-border px-2 py-2 text-center font-mono text-xs text-muted-foreground">{fmtDisplay(iso)}</td>
+                    <td className="border border-border px-2 py-2 text-center font-mono text-xs text-muted-foreground">
+                      {fmtDisplay(iso)}
+                    </td>
                   ) : (
                     <td className="border border-border p-0.5">
                       <input
-                        type="time" value={row[field]}
+                        type="time"
+                        value={row[field]}
                         onChange={(e) => update(date, field, e.target.value)}
                         disabled={weekend && !row[field]}
                         className="w-full text-xs px-0.5 py-1.5 bg-transparent focus:bg-accent rounded font-mono disabled:opacity-40 focus:outline-none focus:ring-1 focus:ring-ring text-center"
@@ -312,28 +339,52 @@ export function DTRTable({
                   );
 
                 return (
-                  <tr key={date} className={`${weekend ? "bg-slate-50 dark:bg-slate-800/50 opacity-60" : "hover:bg-muted/20"} transition-colors`}>
+                  <tr
+                    key={date}
+                    className={`${weekend ? "bg-slate-50 dark:bg-slate-800/50 opacity-60" : "hover:bg-muted/20"} transition-colors`}
+                  >
                     <td className="border border-border px-2 py-2 whitespace-nowrap flex items-center justify-between group">
                       <div className="flex items-center gap-1.5">
                         <span className={weekend ? "text-muted-foreground" : "font-medium"}>{dateLabel}</span>
                         {weekend && <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4">WE</Badge>}
                         {rec?.isLate && !readOnly && <Badge variant="warning" className="text-[9px] px-1 py-0 h-4">Late</Badge>}
+                        {fieldWork && hours > 8 && (
+                          <Badge className="text-[9px] px-1 py-0 h-4 bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300 border-0">
+                            Field
+                          </Badge>
+                        )}
                       </div>
-                      
+
                       {!readOnly && (
                         <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 ml-2 transition-all">
                           {!weekend && (
-                            <button onClick={() => handleQuickFillRow(date)} className="p-1 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 text-emerald-500 rounded" title="Auto-fill 8h shift">
+                            <button
+                              onClick={() => handleQuickFillRow(date)}
+                              className="p-1 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 text-emerald-500 rounded"
+                              title="Auto-fill 8h shift"
+                            >
                               <Zap className="w-3.5 h-3.5" />
                             </button>
                           )}
-                          <button onClick={() => handleMarkStatus(date, "Absent")} className="p-1 hover:bg-amber-100 dark:hover:bg-amber-900/30 text-amber-500 rounded" title="Mark Absent">
+                          <button
+                            onClick={() => handleMarkStatus(date, "Absent")}
+                            className="p-1 hover:bg-amber-100 dark:hover:bg-amber-900/30 text-amber-500 rounded"
+                            title="Mark Absent"
+                          >
                             <UserMinus className="w-3.5 h-3.5" />
                           </button>
-                          <button onClick={() => handleMarkStatus(date, "Holiday")} className="p-1 hover:bg-blue-100 dark:hover:bg-blue-900/30 text-blue-500 rounded" title="Mark Holiday">
+                          <button
+                            onClick={() => handleMarkStatus(date, "Holiday")}
+                            className="p-1 hover:bg-blue-100 dark:hover:bg-blue-900/30 text-blue-500 rounded"
+                            title="Mark Holiday"
+                          >
                             <Coffee className="w-3.5 h-3.5" />
                           </button>
-                          <button onClick={() => handleClearRow(date)} className="p-1 hover:bg-red-100 dark:hover:bg-red-900/30 text-red-500 rounded" title="Clear record">
+                          <button
+                            onClick={() => handleClearRow(date)}
+                            className="p-1 hover:bg-red-100 dark:hover:bg-red-900/30 text-red-500 rounded"
+                            title="Clear record"
+                          >
                             <Eraser className="w-3.5 h-3.5" />
                           </button>
                         </div>
@@ -360,14 +411,21 @@ export function DTRTable({
                       )}
                     </td>
                     <td className="border border-border px-2 py-2 text-center font-mono font-semibold">
-                      {hours > 0 ? <span className="text-emerald-600 dark:text-emerald-400">{hours.toFixed(1)}</span> : <span className="text-muted-foreground">—</span>}
+                      {hours > 0 ? (
+                        <span className={hours > 8 && fieldWork ? "text-violet-600 dark:text-violet-400" : "text-emerald-600 dark:text-emerald-400"}>
+                          {hours.toFixed(1)}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
                     </td>
                     <td className="border border-border p-0.5">
                       {readOnly ? (
                         <p className="px-2 py-1.5 text-xs">{row.verifiedBy}</p>
                       ) : (
                         <input
-                          type="text" value={row.verifiedBy}
+                          type="text"
+                          value={row.verifiedBy}
                           onChange={(e) => update(date, "verifiedBy", e.target.value)}
                           disabled={weekend && !row.verifiedBy}
                           className="w-full text-xs px-1.5 py-1.5 bg-transparent focus:bg-accent rounded disabled:opacity-40 focus:outline-none focus:ring-1 focus:ring-ring"
@@ -418,14 +476,22 @@ export function DTRTable({
                 <div>
                   <p className="text-xs text-muted-foreground mb-1">Signature / Printed Name</p>
                   {readOnly ? (
-                    <div className="h-9 border-b border-dashed border-border flex items-end pb-1"><span className="text-sm">{supervisorSig}</span></div>
-                  ) : (<Input value={supervisorSig} onChange={(e) => setSupervisorSig(e.target.value)} placeholder="Supervisor name" />)}
+                    <div className="h-9 border-b border-dashed border-border flex items-end pb-1">
+                      <span className="text-sm">{supervisorSig}</span>
+                    </div>
+                  ) : (
+                    <Input value={supervisorSig} onChange={(e) => setSupervisorSig(e.target.value)} placeholder="Supervisor name" />
+                  )}
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground mb-1">Date</p>
                   {readOnly ? (
-                    <div className="h-9 border-b border-dashed border-border flex items-end pb-1"><span className="text-sm">{supervisorDate}</span></div>
-                  ) : (<Input type="date" value={supervisorDate} onChange={(e) => setSupervisorDate(e.target.value)} />)}
+                    <div className="h-9 border-b border-dashed border-border flex items-end pb-1">
+                      <span className="text-sm">{supervisorDate}</span>
+                    </div>
+                  ) : (
+                    <Input type="date" value={supervisorDate} onChange={(e) => setSupervisorDate(e.target.value)} />
+                  )}
                 </div>
               </div>
             </div>
@@ -435,14 +501,22 @@ export function DTRTable({
                 <div>
                   <p className="text-xs text-muted-foreground mb-1">Signature / Printed Name</p>
                   {readOnly ? (
-                    <div className="h-9 border-b border-dashed border-border flex items-end pb-1"><span className="text-sm">{studentSig}</span></div>
-                  ) : (<Input value={studentSig} onChange={(e) => setStudentSig(e.target.value)} placeholder="Your name" />)}
+                    <div className="h-9 border-b border-dashed border-border flex items-end pb-1">
+                      <span className="text-sm">{studentSig}</span>
+                    </div>
+                  ) : (
+                    <Input value={studentSig} onChange={(e) => setStudentSig(e.target.value)} placeholder="Your name" />
+                  )}
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground mb-1">Date</p>
                   {readOnly ? (
-                    <div className="h-9 border-b border-dashed border-border flex items-end pb-1"><span className="text-sm">{studentDate}</span></div>
-                  ) : (<Input type="date" value={studentDate} onChange={(e) => setStudentDate(e.target.value)} />)}
+                    <div className="h-9 border-b border-dashed border-border flex items-end pb-1">
+                      <span className="text-sm">{studentDate}</span>
+                    </div>
+                  ) : (
+                    <Input type="date" value={studentDate} onChange={(e) => setStudentDate(e.target.value)} />
+                  )}
                 </div>
               </div>
             </div>
@@ -515,13 +589,9 @@ export function DTRTable({
         >
           <thead>
             <tr>
-              <th
-                className="border border-black font-bold align-middle"
-                style={{ padding: "2px 4px" }}
-              >
+              <th className="border border-black font-bold align-middle" style={{ padding: "2px 4px" }}>
                 Date
               </th>
-
               {(["Morning", "Afternoon", "Overtime"] as const).map((label) => (
                 <th
                   key={label}
@@ -535,23 +605,13 @@ export function DTRTable({
                   </div>
                 </th>
               ))}
-
-              <th
-                className="border border-black font-bold align-middle"
-                style={{ width: "28%", padding: "2px 4px" }}
-              >
+              <th className="border border-black font-bold align-middle" style={{ width: "28%", padding: "2px 4px" }}>
                 Accomplishment/s
               </th>
-              <th
-                className="border border-black font-bold align-middle"
-                style={{ width: "7%", padding: "2px 4px" }}
-              >
+              <th className="border border-black font-bold align-middle" style={{ width: "7%", padding: "2px 4px" }}>
                 Total Hours
               </th>
-              <th
-                className="border border-black font-bold align-middle"
-                style={{ width: "10%", padding: "2px 4px" }}
-              >
+              <th className="border border-black font-bold align-middle" style={{ width: "10%", padding: "2px 4px" }}>
                 Verified By
               </th>
             </tr>
@@ -636,7 +696,7 @@ export function DTRTable({
           </tbody>
         </table>
 
-        {/* Certification text — Candara 10pt with first-line indent */}
+        {/* Certification text */}
         <p
           className="text-justify mb-6 leading-relaxed"
           style={{ fontSize: "10pt", fontFamily: "'Candara', Candara, Calibri, sans-serif", textIndent: "2em" }}
@@ -645,9 +705,8 @@ export function DTRTable({
           record of which was made daily at the time of arrival at and departure from office.
         </p>
 
-        {/* Signature section — Century Gothic 10pt */}
+        {/* Signature section */}
         <div style={{ fontSize: "10pt", fontFamily: "'Century Gothic', CenturyGothic, AppleGothic, sans-serif" }} className="space-y-5">
-
           {/* Supervisor row */}
           <div>
             <div className="flex items-end gap-4">
@@ -679,7 +738,6 @@ export function DTRTable({
             </div>
             <p className="mt-1">Student Intern&apos;s Signature</p>
           </div>
-
         </div>
       </div>
     </div>
