@@ -1,6 +1,6 @@
 // components/dtr-table.tsx
 "use client";
-import { useState } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { format, parseISO, isWeekend } from "date-fns";
 import { toZonedTime } from "date-fns-tz";
 import toast from "react-hot-toast";
@@ -56,16 +56,6 @@ const getMins = (t?: string) => {
   return h * 60 + m;
 };
 
-/**
- * Returns minutes to deduct based on how late the morning time-in is.
- *
- * | Time in      | Minutes late | Deduction |
- * |--------------|-------------|-----------|
- * | 8:01 – 8:15  | 1  – 15     | −15 min   |
- * | 8:16 – 8:30  | 16 – 30     | −30 min   |
- * | 8:31 – 9:00  | 31 – 60     | −60 min   |
- * | 9:01+        | 61+         | none      |
- */
 function getLateDeductionMins(morningIn: string): number {
   if (!morningIn) return 0;
   const lateBy = getMins(morningIn) - getMins(STANDARD_START);
@@ -73,7 +63,7 @@ function getLateDeductionMins(morningIn: string): number {
   if (lateBy <= 15) return 15;
   if (lateBy <= 30) return 30;
   if (lateBy <= 60) return 60;
-  return 0; // 9:01+ — no bracket penalty, raw time used
+  return 0;
 }
 
 function getLateLabel(morningIn: string): string | null {
@@ -83,7 +73,88 @@ function getLateLabel(morningIn: string): string | null {
   if (lateBy <= 15) return "-15 min";
   if (lateBy <= 30) return "-30 min";
   if (lateBy <= 60) return "-1 hr";
-  return null; // 9:01+ — no label
+  return null;
+}
+
+// ─── Saving Overlay ───────────────────────────────────────────────────────────
+function SavingOverlay({ visible }: { visible: boolean }) {
+  if (!visible) return null;
+  return (
+    <div
+      aria-live="assertive"
+      aria-label="Saving DTR"
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 9999,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "rgba(0,0,0,0.50)",
+        backdropFilter: "blur(4px)",
+        WebkitBackdropFilter: "blur(4px)",
+      }}
+    >
+      <style>{`
+        @keyframes dtr-spin { to { transform: rotate(360deg); } }
+        @keyframes dtr-pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+      `}</style>
+      <div
+        style={{
+          background: "#ffffff",
+          borderRadius: 16,
+          padding: "36px 52px",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 18,
+          boxShadow: "0 20px 60px rgba(0,0,0,0.25)",
+          minWidth: 220,
+        }}
+      >
+        {/* Spinner */}
+        <svg
+          width="44"
+          height="44"
+          viewBox="0 0 44 44"
+          fill="none"
+          style={{ animation: "dtr-spin 0.75s linear infinite" }}
+        >
+          <circle cx="22" cy="22" r="18" stroke="#e5e7eb" strokeWidth="4" />
+          <path d="M22 4a18 18 0 0 1 18 18" stroke="#10b981" strokeWidth="4" strokeLinecap="round" />
+        </svg>
+        <div style={{ textAlign: "center" }}>
+          <p style={{ margin: 0, fontWeight: 700, fontSize: 16, color: "#111827", letterSpacing: "-0.01em" }}>
+            Saving DTR…
+          </p>
+          <p style={{ margin: "4px 0 0", fontSize: 12, color: "#6b7280", animation: "dtr-pulse 1.5s ease-in-out infinite" }}>
+            Please don&apos;t close this page
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Unsaved Banner ───────────────────────────────────────────────────────────
+function UnsavedBanner({ show }: { show: boolean }) {
+  if (!show) return null;
+  return (
+    <div
+      role="alert"
+      aria-live="polite"
+      className="print:hidden flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold"
+      style={{
+        background: "#fffbeb",
+        border: "1px solid #fcd34d",
+        color: "#92400e",
+      }}
+    >
+      <span style={{ fontSize: 8, lineHeight: 1 }}>●</span>
+      You have unsaved changes — save before leaving or your entries will be lost.
+    </div>
+  );
 }
 
 interface DTRTableProps {
@@ -110,21 +181,26 @@ export function DTRTable({
   userId, days, records, form, userName, internshipSite,
   periodTitle, requiredTotalHours, readOnly = false, startDate,
 }: DTRTableProps) {
-  const [rows, setRows] = useState<Record<string, RowData>>(() => {
+  // ── Build initial state once ──────────────────────────────────────────────
+  const buildInitialRows = useCallback((): Record<string, RowData> => {
     const init: Record<string, RowData> = {};
     days.forEach((d) => {
       const r = records[d];
       init[d] = {
-        morningIn:    isoToTime(r?.morningIn),    morningOut:    isoToTime(r?.morningOut),
-        afternoonIn:  isoToTime(r?.afternoonIn),  afternoonOut:  isoToTime(r?.afternoonOut),
-        overtimeIn:   isoToTime(r?.overtimeIn),   overtimeOut:   isoToTime(r?.overtimeOut),
+        morningIn:       isoToTime(r?.morningIn),
+        morningOut:      isoToTime(r?.morningOut),
+        afternoonIn:     isoToTime(r?.afternoonIn),
+        afternoonOut:    isoToTime(r?.afternoonOut),
+        overtimeIn:      isoToTime(r?.overtimeIn),
+        overtimeOut:     isoToTime(r?.overtimeOut),
         accomplishments: r?.accomplishments || "",
-        verifiedBy:   r?.verifiedBy || "",
+        verifiedBy:      r?.verifiedBy || "",
       };
     });
     return init;
-  });
+  }, [days, records]);
 
+  const [rows, setRows]                 = useState<Record<string, RowData>>(buildInitialRows);
   const [fieldWorkDays, setFieldWorkDays] = useState<Set<string>>(new Set());
   const [supervisorSig, setSupervisorSig]   = useState(form?.supervisorSignature || "");
   const [studentSig, setStudentSig]         = useState(form?.studentSignature || "");
@@ -132,11 +208,53 @@ export function DTRTable({
   const [studentDate, setStudentDate]       = useState(form?.studentSignDate || "");
   const [saving, setSaving]                 = useState(false);
 
+  // ── Dirty tracking ────────────────────────────────────────────────────────
+  // Snapshot of saved state so we can compare against current
+  const savedSnapshot = useRef({
+    rows:           buildInitialRows(),
+    supervisorSig:  form?.supervisorSignature || "",
+    studentSig:     form?.studentSignature    || "",
+    supervisorDate: form?.supervisorSignDate  || "",
+    studentDate:    form?.studentSignDate     || "",
+  });
+
+  const isDirty = (() => {
+    if (supervisorSig  !== savedSnapshot.current.supervisorSig)  return true;
+    if (studentSig     !== savedSnapshot.current.studentSig)     return true;
+    if (supervisorDate !== savedSnapshot.current.supervisorDate) return true;
+    if (studentDate    !== savedSnapshot.current.studentDate)    return true;
+    for (const d of days) {
+      const cur  = rows[d];
+      const snap = savedSnapshot.current.rows[d];
+      if (!cur || !snap) continue;
+      const fields: (keyof RowData)[] = [
+        "morningIn","morningOut","afternoonIn","afternoonOut",
+        "overtimeIn","overtimeOut","accomplishments","verifiedBy",
+      ];
+      for (const f of fields) {
+        if (cur[f] !== snap[f]) return true;
+      }
+    }
+    return false;
+  })();
+
+  // ── beforeunload warning ──────────────────────────────────────────────────
+  useEffect(() => {
+    const handle = (e: BeforeUnloadEvent) => {
+      if (!isDirty) return;
+      e.preventDefault();
+      e.returnValue = "You have unsaved DTR changes. Are you sure you want to leave?";
+      return e.returnValue;
+    };
+    window.addEventListener("beforeunload", handle);
+    return () => window.removeEventListener("beforeunload", handle);
+  }, [isDirty]);
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
   const toggleFieldWork = (date: string) => {
     setFieldWorkDays((prev) => {
       const next = new Set(prev);
-      if (next.has(date)) next.delete(date);
-      else next.add(date);
+      next.has(date) ? next.delete(date) : next.add(date);
       return next;
     });
   };
@@ -144,16 +262,6 @@ export function DTRTable({
   const update = (date: string, field: keyof RowData, val: string) =>
     setRows((prev) => ({ ...prev, [date]: { ...prev[date], [field]: val } }));
 
-  /**
-   * Core hour calculation per row.
-   *
-   * Field work  → absolute elapsed time, no cap, no late deduction.
-   * Standard    → bracket deduction applied once via normalized start time, capped at 8h.
-   *
-   * The normalization trick: for late arrivals in the 1–60 min bracket we pretend the
-   * student clocked in at 08:00, then subtract the bracket penalty from the total.
-   * This prevents double-counting the lost minutes (actual short block + penalty).
-   */
   const calcRowHours = (row: RowData, isFieldWork: boolean): number => {
     let totalMins = 0;
 
@@ -167,15 +275,9 @@ export function DTRTable({
       return parseFloat((totalMins / 60).toFixed(2));
     }
 
-    // ── Standard mode ──────────────────────────────────────────────
-    // Normalize morning IN for the bracket-penalty range (1–60 min late).
-    // This ensures the bracket is the sole deduction — not added on top of an
-    // already-shortened morning block.
     const lateBy = row.morningIn ? getMins(row.morningIn) - getMins(STANDARD_START) : 0;
-    const effectiveMorningIn =
-      lateBy > 0 && lateBy <= 60 ? STANDARD_START : row.morningIn;
+    const effectiveMorningIn = lateBy > 0 && lateBy <= 60 ? STANDARD_START : row.morningIn;
 
-    // Legacy fallback (morningIn + afternoonOut only)
     if (row.morningIn && !row.morningOut && !row.afternoonIn && row.afternoonOut) {
       totalMins = Math.max(0, getMins(row.afternoonOut) - getMins(effectiveMorningIn) - 60);
     } else {
@@ -187,9 +289,7 @@ export function DTRTable({
         totalMins += Math.max(0, getMins(row.overtimeOut) - getMins(row.overtimeIn));
     }
 
-    // Apply bracket deduction once
     totalMins -= getLateDeductionMins(row.morningIn);
-
     return Math.min(parseFloat((Math.max(0, totalMins) / 60).toFixed(2)), 8);
   };
 
@@ -229,17 +329,33 @@ export function DTRTable({
   const totalWorked   = previousHours + totalHoursThisForm;
   const remaining     = Math.max(0, requiredTotalHours - totalWorked);
 
+  // ── Save ──────────────────────────────────────────────────────────────────
   const handleSave = async () => {
     setSaving(true);
     try {
       await Promise.all(days.map((d) => upsertRecord(userId, { date: d, ...rows[d] })));
       await saveFormSignatures(userId, startDate, {
-        supervisorSignature: supervisorSig, studentSignature: studentSig,
-        supervisorSignDate: supervisorDate, studentSignDate: studentDate,
+        supervisorSignature: supervisorSig,
+        studentSignature:    studentSig,
+        supervisorSignDate:  supervisorDate,
+        studentSignDate:     studentDate,
       });
+
+      // ✅ Update snapshot so form is no longer dirty
+      savedSnapshot.current = {
+        rows:           JSON.parse(JSON.stringify(rows)),
+        supervisorSig,
+        studentSig,
+        supervisorDate,
+        studentDate,
+      };
+
       toast.success("DTR form saved!");
-    } catch { toast.error("Failed to save."); }
-    finally { setSaving(false); }
+    } catch {
+      toast.error("Failed to save.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const blankPrintRows = Math.max(0, PRINT_ROWS - days.length);
@@ -257,9 +373,26 @@ export function DTRTable({
   }
 `}} />
 
+      {/* ── Saving overlay ── */}
+      <SavingOverlay visible={saving} />
+
+      {/* ── Unsaved banner ── */}
+      {!readOnly && <UnsavedBanner show={isDirty} />}
+
       {/* Action buttons */}
       {!readOnly && (
-        <div className="flex gap-2 justify-end print:hidden flex-wrap">
+        <div className="flex gap-2 justify-end print:hidden flex-wrap items-center">
+          {/* Unsaved badge (compact, sits inline with buttons) */}
+          {isDirty && (
+            <span
+              className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full"
+              style={{ background: "#fef3c7", color: "#92400e", border: "1px solid #fcd34d" }}
+            >
+              <span style={{ fontSize: 8 }}>●</span>
+              Unsaved
+            </span>
+          )}
+
           <Button
             variant="secondary"
             onClick={handleFillAllEmpty}
@@ -270,11 +403,11 @@ export function DTRTable({
           <Button variant="outline" onClick={() => window.print()} className="gap-2">
             <Printer className="w-4 h-4" /> Print Document
           </Button>
-          <Button onClick={handleSave} disabled={saving} className="gap-2">
+          <Button onClick={handleSave} disabled={saving || !isDirty} className="gap-2">
             {saving
               ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
               : <Save className="w-4 h-4" />}
-            Save All Changes
+            {saving ? "Saving…" : isDirty ? "Save Changes" : "Saved"}
           </Button>
         </div>
       )}
