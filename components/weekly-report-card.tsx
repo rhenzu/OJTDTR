@@ -141,11 +141,13 @@ export function WeeklyReportCard({
 
   const [draft, setDraft] = useState({ ...emptyData, ...aiData });
 
-  const setField = useCallback(
-    <K extends keyof typeof draft>(key: K, val: (typeof draft)[K]) =>
-      setDraft((prev) => ({ ...prev, [key]: val })),
-    []
-  );
+  type DraftData = typeof emptyData;
+
+const setField = useCallback(
+  <K extends keyof DraftData>(key: K, val: DraftData[K]) =>
+    setDraft((prev: DraftData) => ({ ...prev, [key]: val })),
+  []
+);
 
   const handleEdit = () => {
     setDraft({ ...emptyData, ...aiData }); // reset to latest saved data
