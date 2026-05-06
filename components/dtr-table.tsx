@@ -14,7 +14,7 @@ import type { IDailyRecord, IDTRForm } from "@/types";
 
 const PH_TZ = "Asia/Manila";
 const PRINT_ROWS = 16;
-const STANDARD_START = "08:00"; // expected time-in
+const STANDARD_START = "08:00";
 
 function formatSignatureDate(dateStr: string): string {
   if (!dateStr) return "";
@@ -57,34 +57,33 @@ const getMins = (t?: string) => {
 };
 
 /**
- * Returns how many minutes should be deducted due to late arrival.
- * Brackets (measured from 08:00):
- *   1–14 min late  → deduct 15 min
- *  15–29 min late  → deduct 30 min
- *  30–59 min late  → deduct 60 min
- *  60+ min late (≥09:00) → no deduction, just raw hours
+ * Returns minutes to deduct based on how late the morning time-in is.
+ *
+ * | Time in      | Minutes late | Deduction |
+ * |--------------|-------------|-----------|
+ * | 8:01 – 8:15  | 1  – 15     | −15 min   |
+ * | 8:16 – 8:30  | 16 – 30     | −30 min   |
+ * | 8:31 – 9:00  | 31 – 60     | −60 min   |
+ * | 9:01+        | 61+         | none      |
  */
 function getLateDeductionMins(morningIn: string): number {
   if (!morningIn) return 0;
   const lateBy = getMins(morningIn) - getMins(STANDARD_START);
-  if (lateBy <= 0) return 0;           // on time or early
-  if (lateBy < 15)  return 15;         // 8:01–8:14
-  if (lateBy < 30)  return 30;         // 8:15–8:29
-  if (lateBy < 60)  return 60;         // 8:30–8:59
-  return 0;                            // ≥9:00 — count normally
+  if (lateBy <= 0)  return 0;
+  if (lateBy <= 15) return 15;
+  if (lateBy <= 30) return 30;
+  if (lateBy <= 60) return 60;
+  return 0; // 9:01+ — no bracket penalty, raw time used
 }
 
-/**
- * Human-readable late label for the badge.
- */
 function getLateLabel(morningIn: string): string | null {
   if (!morningIn) return null;
   const lateBy = getMins(morningIn) - getMins(STANDARD_START);
-  if (lateBy <= 0) return null;
-  if (lateBy < 15)  return "-15 min";
-  if (lateBy < 30)  return "-30 min";
-  if (lateBy < 60)  return "-1 hr";
-  return null; // ≥9:00 — no penalty label
+  if (lateBy <= 0)  return null;
+  if (lateBy <= 15) return "-15 min";
+  if (lateBy <= 30) return "-30 min";
+  if (lateBy <= 60) return "-1 hr";
+  return null; // 9:01+ — no label
 }
 
 interface DTRTableProps {
@@ -126,14 +125,12 @@ export function DTRTable({
     return init;
   });
 
-  // Per-day field work set — days in here bypass the 8h cap and late deductions
   const [fieldWorkDays, setFieldWorkDays] = useState<Set<string>>(new Set());
-
-  const [supervisorSig, setSupervisorSig]     = useState(form?.supervisorSignature || "");
-  const [studentSig, setStudentSig]           = useState(form?.studentSignature || "");
-  const [supervisorDate, setSupervisorDate]   = useState(form?.supervisorSignDate || "");
-  const [studentDate, setStudentDate]         = useState(form?.studentSignDate || "");
-  const [saving, setSaving]                   = useState(false);
+  const [supervisorSig, setSupervisorSig]   = useState(form?.supervisorSignature || "");
+  const [studentSig, setStudentSig]         = useState(form?.studentSignature || "");
+  const [supervisorDate, setSupervisorDate] = useState(form?.supervisorSignDate || "");
+  const [studentDate, setStudentDate]       = useState(form?.studentSignDate || "");
+  const [saving, setSaving]                 = useState(false);
 
   const toggleFieldWork = (date: string) => {
     setFieldWorkDays((prev) => {
@@ -150,14 +147,17 @@ export function DTRTable({
   /**
    * Core hour calculation per row.
    *
-   * Field work  → absolute elapsed time across all blocks, no cap, no late penalty.
-   * Standard    → block sum, late deduction applied on morning IN, capped at 8h.
+   * Field work  → absolute elapsed time, no cap, no late deduction.
+   * Standard    → bracket deduction applied once via normalized start time, capped at 8h.
+   *
+   * The normalization trick: for late arrivals in the 1–60 min bracket we pretend the
+   * student clocked in at 08:00, then subtract the bracket penalty from the total.
+   * This prevents double-counting the lost minutes (actual short block + penalty).
    */
   const calcRowHours = (row: RowData, isFieldWork: boolean): number => {
     let totalMins = 0;
 
     if (isFieldWork) {
-      // Absolute time — all three blocks summed, no ceiling, no penalty
       if (row.morningIn && row.morningOut)
         totalMins += Math.max(0, getMins(row.morningOut) - getMins(row.morningIn));
       if (row.afternoonIn && row.afternoonOut)
@@ -168,22 +168,28 @@ export function DTRTable({
     }
 
     // ── Standard mode ──────────────────────────────────────────────
-    // Legacy fallback (morningIn + afternoonOut only, no morningOut/afternoonIn)
+    // Normalize morning IN for the bracket-penalty range (1–60 min late).
+    // This ensures the bracket is the sole deduction — not added on top of an
+    // already-shortened morning block.
+    const lateBy = row.morningIn ? getMins(row.morningIn) - getMins(STANDARD_START) : 0;
+    const effectiveMorningIn =
+      lateBy > 0 && lateBy <= 60 ? STANDARD_START : row.morningIn;
+
+    // Legacy fallback (morningIn + afternoonOut only)
     if (row.morningIn && !row.morningOut && !row.afternoonIn && row.afternoonOut) {
-      totalMins = Math.max(0, getMins(row.afternoonOut) - getMins(row.morningIn) - 60);
+      totalMins = Math.max(0, getMins(row.afternoonOut) - getMins(effectiveMorningIn) - 60);
     } else {
       if (row.morningIn && row.morningOut)
-        totalMins += Math.max(0, getMins(row.morningOut) - getMins(row.morningIn));
+        totalMins += Math.max(0, getMins(row.morningOut) - getMins(effectiveMorningIn));
       if (row.afternoonIn && row.afternoonOut)
         totalMins += Math.max(0, getMins(row.afternoonOut) - getMins(row.afternoonIn));
       if (row.overtimeIn && row.overtimeOut)
         totalMins += Math.max(0, getMins(row.overtimeOut) - getMins(row.overtimeIn));
     }
 
-    // Late deduction (only when there is a morning time-in recorded)
+    // Apply bracket deduction once
     totalMins -= getLateDeductionMins(row.morningIn);
 
-    // Never negative, cap at 8h
     return Math.min(parseFloat((Math.max(0, totalMins) / 60).toFixed(2)), 8);
   };
 
@@ -209,8 +215,7 @@ export function DTRTable({
     setRows(prev => {
       const next = { ...prev };
       days.forEach(d => {
-        const isFieldWork = fieldWorkDays.has(d);
-        if (!isWeekend(parseISO(d)) && calcRowHours(next[d], isFieldWork) === 0 && !next[d].accomplishments) {
+        if (!isWeekend(parseISO(d)) && calcRowHours(next[d], fieldWorkDays.has(d)) === 0 && !next[d].accomplishments) {
           next[d] = { ...next[d], morningIn: "08:00", morningOut: "12:00", afternoonIn: "13:00", afternoonOut: "17:00" };
         }
       });
@@ -220,9 +225,9 @@ export function DTRTable({
   };
 
   const totalHoursThisForm = days.reduce((s, d) => s + calcRowHours(rows[d], fieldWorkDays.has(d)), 0);
-  const previousHours  = form?.previousHours || 0;
-  const totalWorked    = previousHours + totalHoursThisForm;
-  const remaining      = Math.max(0, requiredTotalHours - totalWorked);
+  const previousHours = form?.previousHours || 0;
+  const totalWorked   = previousHours + totalHoursThisForm;
+  const remaining     = Math.max(0, requiredTotalHours - totalWorked);
 
   const handleSave = async () => {
     setSaving(true);
@@ -334,10 +339,10 @@ export function DTRTable({
             </thead>
             <tbody>
               {days.map((date) => {
-                const row        = rows[date];
-                const parsedDate = parseISO(date);
-                const weekend    = isWeekend(parsedDate);
-                const dateLabel  = format(parsedDate, "EEE, MMM d");
+                const row         = rows[date];
+                const parsedDate  = parseISO(date);
+                const weekend     = isWeekend(parsedDate);
+                const dateLabel   = format(parsedDate, "EEE, MMM d");
                 const isFieldWork = fieldWorkDays.has(date);
                 const hours       = calcRowHours(row, isFieldWork);
                 const rec         = records[date];
@@ -364,12 +369,11 @@ export function DTRTable({
                   <tr
                     key={date}
                     className={[
-                      weekend       ? "bg-slate-50 dark:bg-slate-800/50 opacity-60" : "hover:bg-muted/20",
-                      isFieldWork   ? "bg-violet-50/60 dark:bg-violet-900/10" : "",
+                      weekend     ? "bg-slate-50 dark:bg-slate-800/50 opacity-60" : "hover:bg-muted/20",
+                      isFieldWork ? "bg-violet-50/60 dark:bg-violet-900/10" : "",
                       "transition-colors",
                     ].join(" ")}
                   >
-                    {/* ── Date cell ── */}
                     <td className="border border-border px-2 py-2 whitespace-nowrap">
                       <div className="flex items-center justify-between group">
                         <div className="flex items-center gap-1.5 flex-wrap">
@@ -400,7 +404,6 @@ export function DTRTable({
                                 <Zap className="w-3.5 h-3.5" />
                               </button>
                             )}
-                            {/* Per-row field work toggle */}
                             <button
                               onClick={() => toggleFieldWork(date)}
                               className={`p-1 rounded ${
@@ -460,11 +463,10 @@ export function DTRTable({
                       )}
                     </td>
 
-                    {/* Hours cell — violet when field work, emerald otherwise */}
                     <td className="border border-border px-2 py-2 text-center font-mono font-semibold">
                       {hours > 0 ? (
                         <span className={isFieldWork ? "text-violet-600 dark:text-violet-400" : "text-emerald-600 dark:text-emerald-400"}>
-                          {hours.toFixed(1)}
+                          {hours.toFixed(2)}
                         </span>
                       ) : (
                         <span className="text-muted-foreground">—</span>
@@ -492,7 +494,7 @@ export function DTRTable({
           </table>
         </div>
 
-        {/* Summary Row */}
+        {/* Summary */}
         <div className="border-t border-border bg-muted/20 px-4 py-4">
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
             <div>
@@ -522,7 +524,6 @@ export function DTRTable({
         <div className="border-t border-border p-4">
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4">Signatures</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-            {/* Supervisor */}
             <div className="space-y-3">
               <p className="text-sm font-medium">Company Supervisor</p>
               <div className="space-y-2">
@@ -540,7 +541,6 @@ export function DTRTable({
                 </div>
               </div>
             </div>
-            {/* Student */}
             <div className="space-y-3">
               <p className="text-sm font-medium">Student Intern</p>
               <div className="space-y-2">
