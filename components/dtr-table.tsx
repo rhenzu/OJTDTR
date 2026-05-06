@@ -13,8 +13,8 @@ import { saveFormSignatures } from "@/actions/form-actions";
 import type { IDailyRecord, IDTRForm } from "@/types";
 
 const PH_TZ = "Asia/Manila";
-
 const PRINT_ROWS = 16;
+const STANDARD_START = "08:00"; // expected time-in
 
 function formatSignatureDate(dateStr: string): string {
   if (!dateStr) return "";
@@ -56,6 +56,37 @@ const getMins = (t?: string) => {
   return h * 60 + m;
 };
 
+/**
+ * Returns how many minutes should be deducted due to late arrival.
+ * Brackets (measured from 08:00):
+ *   1–14 min late  → deduct 15 min
+ *  15–29 min late  → deduct 30 min
+ *  30–59 min late  → deduct 60 min
+ *  60+ min late (≥09:00) → no deduction, just raw hours
+ */
+function getLateDeductionMins(morningIn: string): number {
+  if (!morningIn) return 0;
+  const lateBy = getMins(morningIn) - getMins(STANDARD_START);
+  if (lateBy <= 0) return 0;           // on time or early
+  if (lateBy < 15)  return 15;         // 8:01–8:14
+  if (lateBy < 30)  return 30;         // 8:15–8:29
+  if (lateBy < 60)  return 60;         // 8:30–8:59
+  return 0;                            // ≥9:00 — count normally
+}
+
+/**
+ * Human-readable late label for the badge.
+ */
+function getLateLabel(morningIn: string): string | null {
+  if (!morningIn) return null;
+  const lateBy = getMins(morningIn) - getMins(STANDARD_START);
+  if (lateBy <= 0) return null;
+  if (lateBy < 15)  return "-15 min";
+  if (lateBy < 30)  return "-30 min";
+  if (lateBy < 60)  return "-1 hr";
+  return null; // ≥9:00 — no penalty label
+}
+
 interface DTRTableProps {
   userId: string;
   days: string[];
@@ -85,96 +116,102 @@ export function DTRTable({
     days.forEach((d) => {
       const r = records[d];
       init[d] = {
-        morningIn: isoToTime(r?.morningIn), morningOut: isoToTime(r?.morningOut),
-        afternoonIn: isoToTime(r?.afternoonIn), afternoonOut: isoToTime(r?.afternoonOut),
-        overtimeIn: isoToTime(r?.overtimeIn), overtimeOut: isoToTime(r?.overtimeOut),
-        accomplishments: r?.accomplishments || "", verifiedBy: r?.verifiedBy || "",
+        morningIn:    isoToTime(r?.morningIn),    morningOut:    isoToTime(r?.morningOut),
+        afternoonIn:  isoToTime(r?.afternoonIn),  afternoonOut:  isoToTime(r?.afternoonOut),
+        overtimeIn:   isoToTime(r?.overtimeIn),   overtimeOut:   isoToTime(r?.overtimeOut),
+        accomplishments: r?.accomplishments || "",
+        verifiedBy:   r?.verifiedBy || "",
       };
     });
     return init;
   });
 
-  const [supervisorSig, setSupervisorSig] = useState(form?.supervisorSignature || "");
-  const [studentSig, setStudentSig] = useState(form?.studentSignature || "");
-  const [supervisorDate, setSupervisorDate] = useState(form?.supervisorSignDate || "");
-  const [studentDate, setStudentDate] = useState(form?.studentSignDate || "");
-  const [saving, setSaving] = useState(false);
-  const [fieldWork, setFieldWork] = useState(false);
+  // Per-day field work set — days in here bypass the 8h cap and late deductions
+  const [fieldWorkDays, setFieldWorkDays] = useState<Set<string>>(new Set());
 
-  const update = (date: string, field: keyof RowData, val: string) => {
-    setRows((prev) => ({ ...prev, [date]: { ...prev[date], [field]: val } }));
+  const [supervisorSig, setSupervisorSig]     = useState(form?.supervisorSignature || "");
+  const [studentSig, setStudentSig]           = useState(form?.studentSignature || "");
+  const [supervisorDate, setSupervisorDate]   = useState(form?.supervisorSignDate || "");
+  const [studentDate, setStudentDate]         = useState(form?.studentSignDate || "");
+  const [saving, setSaving]                   = useState(false);
+
+  const toggleFieldWork = (date: string) => {
+    setFieldWorkDays((prev) => {
+      const next = new Set(prev);
+      if (next.has(date)) next.delete(date);
+      else next.add(date);
+      return next;
+    });
   };
 
-  const calcRowHours = (row: RowData): number => {
+  const update = (date: string, field: keyof RowData, val: string) =>
+    setRows((prev) => ({ ...prev, [date]: { ...prev[date], [field]: val } }));
+
+  /**
+   * Core hour calculation per row.
+   *
+   * Field work  → absolute elapsed time across all blocks, no cap, no late penalty.
+   * Standard    → block sum, late deduction applied on morning IN, capped at 8h.
+   */
+  const calcRowHours = (row: RowData, isFieldWork: boolean): number => {
     let totalMins = 0;
 
-    // Legacy Fallback
+    if (isFieldWork) {
+      // Absolute time — all three blocks summed, no ceiling, no penalty
+      if (row.morningIn && row.morningOut)
+        totalMins += Math.max(0, getMins(row.morningOut) - getMins(row.morningIn));
+      if (row.afternoonIn && row.afternoonOut)
+        totalMins += Math.max(0, getMins(row.afternoonOut) - getMins(row.afternoonIn));
+      if (row.overtimeIn && row.overtimeOut)
+        totalMins += Math.max(0, getMins(row.overtimeOut) - getMins(row.overtimeIn));
+      return parseFloat((totalMins / 60).toFixed(2));
+    }
+
+    // ── Standard mode ──────────────────────────────────────────────
+    // Legacy fallback (morningIn + afternoonOut only, no morningOut/afternoonIn)
     if (row.morningIn && !row.morningOut && !row.afternoonIn && row.afternoonOut) {
       totalMins = Math.max(0, getMins(row.afternoonOut) - getMins(row.morningIn) - 60);
     } else {
-      // Smart Block Calculation
-      if (row.morningIn && row.morningOut) {
+      if (row.morningIn && row.morningOut)
         totalMins += Math.max(0, getMins(row.morningOut) - getMins(row.morningIn));
-      }
-      if (row.afternoonIn && row.afternoonOut) {
+      if (row.afternoonIn && row.afternoonOut)
         totalMins += Math.max(0, getMins(row.afternoonOut) - getMins(row.afternoonIn));
-      }
-      if (row.overtimeIn && row.overtimeOut) {
+      if (row.overtimeIn && row.overtimeOut)
         totalMins += Math.max(0, getMins(row.overtimeOut) - getMins(row.overtimeIn));
-      }
     }
 
-    const raw = parseFloat((totalMins / 60).toFixed(2));
-    return fieldWork ? raw : Math.min(raw, 8);
+    // Late deduction (only when there is a morning time-in recorded)
+    totalMins -= getLateDeductionMins(row.morningIn);
+
+    // Never negative, cap at 8h
+    return Math.min(parseFloat((Math.max(0, totalMins) / 60).toFixed(2)), 8);
   };
 
-  const handleQuickFillRow = (date: string) => {
+  const handleQuickFillRow = (date: string) =>
     setRows(prev => ({
       ...prev,
-      [date]: {
-        ...prev[date],
-        morningIn: "08:00", morningOut: "12:00",
-        afternoonIn: "13:00", afternoonOut: "17:00",
-      }
+      [date]: { ...prev[date], morningIn: "08:00", morningOut: "12:00", afternoonIn: "13:00", afternoonOut: "17:00" },
     }));
-  };
 
-  const handleClearRow = (date: string) => {
+  const handleClearRow = (date: string) =>
     setRows(prev => ({
       ...prev,
-      [date]: {
-        ...prev[date],
-        morningIn: "", morningOut: "",
-        afternoonIn: "", afternoonOut: "",
-        overtimeIn: "", overtimeOut: "",
-        accomplishments: "",
-      }
+      [date]: { ...prev[date], morningIn: "", morningOut: "", afternoonIn: "", afternoonOut: "", overtimeIn: "", overtimeOut: "", accomplishments: "" },
     }));
-  };
 
-  const handleMarkStatus = (date: string, status: string) => {
+  const handleMarkStatus = (date: string, status: string) =>
     setRows(prev => ({
       ...prev,
-      [date]: {
-        ...prev[date],
-        morningIn: "", morningOut: "",
-        afternoonIn: "", afternoonOut: "",
-        overtimeIn: "", overtimeOut: "",
-        accomplishments: status,
-      }
+      [date]: { ...prev[date], morningIn: "", morningOut: "", afternoonIn: "", afternoonOut: "", overtimeIn: "", overtimeOut: "", accomplishments: status },
     }));
-  };
 
   const handleFillAllEmpty = () => {
     setRows(prev => {
       const next = { ...prev };
       days.forEach(d => {
-        if (!isWeekend(parseISO(d)) && calcRowHours(next[d]) === 0 && !next[d].accomplishments) {
-          next[d] = {
-            ...next[d],
-            morningIn: "08:00", morningOut: "12:00",
-            afternoonIn: "13:00", afternoonOut: "17:00",
-          };
+        const isFieldWork = fieldWorkDays.has(d);
+        if (!isWeekend(parseISO(d)) && calcRowHours(next[d], isFieldWork) === 0 && !next[d].accomplishments) {
+          next[d] = { ...next[d], morningIn: "08:00", morningOut: "12:00", afternoonIn: "13:00", afternoonOut: "17:00" };
         }
       });
       return next;
@@ -182,10 +219,10 @@ export function DTRTable({
     toast.success("Standard schedule filled for empty weekdays!");
   };
 
-  const totalHoursThisForm = days.reduce((s, d) => s + calcRowHours(rows[d]), 0);
-  const previousHours = form?.previousHours || 0;
-  const totalWorked = previousHours + totalHoursThisForm;
-  const remaining = Math.max(0, requiredTotalHours - totalWorked);
+  const totalHoursThisForm = days.reduce((s, d) => s + calcRowHours(rows[d], fieldWorkDays.has(d)), 0);
+  const previousHours  = form?.previousHours || 0;
+  const totalWorked    = previousHours + totalHoursThisForm;
+  const remaining      = Math.max(0, requiredTotalHours - totalWorked);
 
   const handleSave = async () => {
     setSaving(true);
@@ -211,32 +248,13 @@ export function DTRTable({
     body * { visibility: hidden; }
     #dtr-print-document,
     #dtr-print-document * { visibility: visible; }
-    #dtr-print-document {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-    }
+    #dtr-print-document { position: fixed; top: 0; left: 0; width: 100%; }
   }
 `}} />
 
-      {/* Action buttons (Hidden on Print) */}
+      {/* Action buttons */}
       {!readOnly && (
         <div className="flex gap-2 justify-end print:hidden flex-wrap">
-          {/* Field Work Toggle */}
-          <Button
-            variant={fieldWork ? "default" : "outline"}
-            onClick={() => setFieldWork((v) => !v)}
-            className={`gap-2 ${
-              fieldWork
-                ? "bg-violet-600 text-white hover:bg-violet-700 border-violet-600"
-                : "border-violet-500/40 text-violet-600 hover:bg-violet-500/10"
-            }`}
-          >
-            <MapPin className="w-4 h-4" />
-            Field Work {fieldWork ? "ON" : "OFF"}
-          </Button>
-
           <Button
             variant="secondary"
             onClick={handleFillAllEmpty}
@@ -256,8 +274,20 @@ export function DTRTable({
         </div>
       )}
 
+      {/* Field work legend */}
+      {fieldWorkDays.size > 0 && (
+        <div className="print:hidden flex items-center gap-2 text-xs text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800 rounded-lg px-3 py-2">
+          <MapPin className="w-3.5 h-3.5 shrink-0" />
+          <span>
+            <span className="font-semibold">Field Work active on:</span>{" "}
+            {Array.from(fieldWorkDays).sort().map(d => format(parseISO(d), "EEE MMM d")).join(", ")}
+            {" "}— absolute time counted, no 8h cap, no late deductions.
+          </span>
+        </div>
+      )}
+
       {/* ========================================= */}
-      {/* WEB VIEW (Hidden on Print)                */}
+      {/* WEB VIEW                                  */}
       {/* ========================================= */}
       <div id="dtr-form-web" className="print:hidden bg-white dark:bg-slate-900 border border-border rounded-xl overflow-hidden">
         {/* Header */}
@@ -273,16 +303,9 @@ export function DTRTable({
             </div>
           </div>
           <div className="mt-3 pt-3 border-t border-border">
-            <div className="flex items-center gap-3">
-              <p className="text-sm text-muted-foreground">
-                <span className="font-semibold text-foreground">Period: </span>{periodTitle}
-              </p>
-              {fieldWork && (
-                <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">
-                  <MapPin className="w-3 h-3" /> Field Work — no 8h cap
-                </span>
-              )}
-            </div>
+            <p className="text-sm text-muted-foreground">
+              <span className="font-semibold text-foreground">Period: </span>{periodTitle}
+            </p>
           </div>
         </div>
 
@@ -291,7 +314,7 @@ export function DTRTable({
           <table className="w-full text-xs border-collapse">
             <thead>
               <tr className="bg-muted/50">
-                <th className="border border-border px-2 py-2 text-left font-semibold min-w-[190px]">Date</th>
+                <th className="border border-border px-2 py-2 text-left font-semibold min-w-[200px]">Date</th>
                 <th className="border border-border px-2 py-2 text-center font-semibold" colSpan={2}>Morning</th>
                 <th className="border border-border px-2 py-2 text-center font-semibold" colSpan={2}>Afternoon</th>
                 <th className="border border-border px-2 py-2 text-center font-semibold" colSpan={2}>Overtime</th>
@@ -301,12 +324,9 @@ export function DTRTable({
               </tr>
               <tr className="bg-muted/30 text-muted-foreground">
                 <th className="border border-border px-2 py-1"></th>
-                <th className="border border-border px-2 py-1 text-center font-normal">IN</th>
-                <th className="border border-border px-2 py-1 text-center font-normal">OUT</th>
-                <th className="border border-border px-2 py-1 text-center font-normal">IN</th>
-                <th className="border border-border px-2 py-1 text-center font-normal">OUT</th>
-                <th className="border border-border px-2 py-1 text-center font-normal">IN</th>
-                <th className="border border-border px-2 py-1 text-center font-normal">OUT</th>
+                {["IN","OUT","IN","OUT","IN","OUT"].map((l, i) => (
+                  <th key={i} className="border border-border px-2 py-1 text-center font-normal">{l}</th>
+                ))}
                 <th className="border border-border px-2 py-1"></th>
                 <th className="border border-border px-2 py-1"></th>
                 <th className="border border-border px-2 py-1"></th>
@@ -314,12 +334,14 @@ export function DTRTable({
             </thead>
             <tbody>
               {days.map((date) => {
-                const row = rows[date];
+                const row        = rows[date];
                 const parsedDate = parseISO(date);
-                const weekend = isWeekend(parsedDate);
-                const dateLabel = format(parsedDate, "EEE, MMM d");
-                const hours = calcRowHours(row);
-                const rec = records[date];
+                const weekend    = isWeekend(parsedDate);
+                const dateLabel  = format(parsedDate, "EEE, MMM d");
+                const isFieldWork = fieldWorkDays.has(date);
+                const hours       = calcRowHours(row, isFieldWork);
+                const rec         = records[date];
+                const lateLabel   = !isFieldWork ? getLateLabel(row.morningIn) : null;
 
                 const timeCell = (field: keyof RowData, iso?: string | null) =>
                   readOnly ? (
@@ -341,61 +363,88 @@ export function DTRTable({
                 return (
                   <tr
                     key={date}
-                    className={`${weekend ? "bg-slate-50 dark:bg-slate-800/50 opacity-60" : "hover:bg-muted/20"} transition-colors`}
+                    className={[
+                      weekend       ? "bg-slate-50 dark:bg-slate-800/50 opacity-60" : "hover:bg-muted/20",
+                      isFieldWork   ? "bg-violet-50/60 dark:bg-violet-900/10" : "",
+                      "transition-colors",
+                    ].join(" ")}
                   >
-                    <td className="border border-border px-2 py-2 whitespace-nowrap flex items-center justify-between group">
-                      <div className="flex items-center gap-1.5">
-                        <span className={weekend ? "text-muted-foreground" : "font-medium"}>{dateLabel}</span>
-                        {weekend && <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4">WE</Badge>}
-                        {rec?.isLate && !readOnly && <Badge variant="warning" className="text-[9px] px-1 py-0 h-4">Late</Badge>}
-                        {fieldWork && hours > 8 && (
-                          <Badge className="text-[9px] px-1 py-0 h-4 bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300 border-0">
-                            Field
-                          </Badge>
+                    {/* ── Date cell ── */}
+                    <td className="border border-border px-2 py-2 whitespace-nowrap">
+                      <div className="flex items-center justify-between group">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className={weekend ? "text-muted-foreground" : "font-medium"}>{dateLabel}</span>
+                          {weekend && (
+                            <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4">WE</Badge>
+                          )}
+                          {isFieldWork && (
+                            <Badge className="text-[9px] px-1 py-0 h-4 bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300 border-0">
+                              Field
+                            </Badge>
+                          )}
+                          {lateLabel && (
+                            <Badge className="text-[9px] px-1 py-0 h-4 bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 border-0">
+                              {lateLabel}
+                            </Badge>
+                          )}
+                        </div>
+
+                        {!readOnly && (
+                          <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 ml-2 transition-all">
+                            {!weekend && (
+                              <button
+                                onClick={() => handleQuickFillRow(date)}
+                                className="p-1 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 text-emerald-500 rounded"
+                                title="Auto-fill 8h shift"
+                              >
+                                <Zap className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                            {/* Per-row field work toggle */}
+                            <button
+                              onClick={() => toggleFieldWork(date)}
+                              className={`p-1 rounded ${
+                                isFieldWork
+                                  ? "bg-violet-100 dark:bg-violet-900/40 text-violet-600 dark:text-violet-400"
+                                  : "hover:bg-violet-100 dark:hover:bg-violet-900/30 text-muted-foreground hover:text-violet-500"
+                              }`}
+                              title={isFieldWork ? "Unmark field work" : "Mark as field work day"}
+                            >
+                              <MapPin className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleMarkStatus(date, "Absent")}
+                              className="p-1 hover:bg-amber-100 dark:hover:bg-amber-900/30 text-amber-500 rounded"
+                              title="Mark Absent"
+                            >
+                              <UserMinus className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleMarkStatus(date, "Holiday")}
+                              className="p-1 hover:bg-blue-100 dark:hover:bg-blue-900/30 text-blue-500 rounded"
+                              title="Mark Holiday"
+                            >
+                              <Coffee className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleClearRow(date)}
+                              className="p-1 hover:bg-red-100 dark:hover:bg-red-900/30 text-red-500 rounded"
+                              title="Clear record"
+                            >
+                              <Eraser className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         )}
                       </div>
-
-                      {!readOnly && (
-                        <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 ml-2 transition-all">
-                          {!weekend && (
-                            <button
-                              onClick={() => handleQuickFillRow(date)}
-                              className="p-1 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 text-emerald-500 rounded"
-                              title="Auto-fill 8h shift"
-                            >
-                              <Zap className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                          <button
-                            onClick={() => handleMarkStatus(date, "Absent")}
-                            className="p-1 hover:bg-amber-100 dark:hover:bg-amber-900/30 text-amber-500 rounded"
-                            title="Mark Absent"
-                          >
-                            <UserMinus className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => handleMarkStatus(date, "Holiday")}
-                            className="p-1 hover:bg-blue-100 dark:hover:bg-blue-900/30 text-blue-500 rounded"
-                            title="Mark Holiday"
-                          >
-                            <Coffee className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => handleClearRow(date)}
-                            className="p-1 hover:bg-red-100 dark:hover:bg-red-900/30 text-red-500 rounded"
-                            title="Clear record"
-                          >
-                            <Eraser className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      )}
                     </td>
-                    {timeCell("morningIn", rec?.morningIn)}
-                    {timeCell("morningOut", rec?.morningOut)}
-                    {timeCell("afternoonIn", rec?.afternoonIn)}
+
+                    {timeCell("morningIn",    rec?.morningIn)}
+                    {timeCell("morningOut",   rec?.morningOut)}
+                    {timeCell("afternoonIn",  rec?.afternoonIn)}
                     {timeCell("afternoonOut", rec?.afternoonOut)}
-                    {timeCell("overtimeIn", rec?.overtimeIn)}
-                    {timeCell("overtimeOut", rec?.overtimeOut)}
+                    {timeCell("overtimeIn",   rec?.overtimeIn)}
+                    {timeCell("overtimeOut",  rec?.overtimeOut)}
+
                     <td className="border border-border p-0.5">
                       {readOnly ? (
                         <p className="px-2 py-1.5 text-xs">{row.accomplishments || ""}</p>
@@ -410,15 +459,18 @@ export function DTRTable({
                         />
                       )}
                     </td>
+
+                    {/* Hours cell — violet when field work, emerald otherwise */}
                     <td className="border border-border px-2 py-2 text-center font-mono font-semibold">
                       {hours > 0 ? (
-                        <span className={hours > 8 && fieldWork ? "text-violet-600 dark:text-violet-400" : "text-emerald-600 dark:text-emerald-400"}>
+                        <span className={isFieldWork ? "text-violet-600 dark:text-violet-400" : "text-emerald-600 dark:text-emerald-400"}>
                           {hours.toFixed(1)}
                         </span>
                       ) : (
                         <span className="text-muted-foreground">—</span>
                       )}
                     </td>
+
                     <td className="border border-border p-0.5">
                       {readOnly ? (
                         <p className="px-2 py-1.5 text-xs">{row.verifiedBy}</p>
@@ -440,7 +492,7 @@ export function DTRTable({
           </table>
         </div>
 
-        {/* Web View Summary Row */}
+        {/* Summary Row */}
         <div className="border-t border-border bg-muted/20 px-4 py-4">
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
             <div>
@@ -466,57 +518,43 @@ export function DTRTable({
           </div>
         </div>
 
-        {/* Web View Signatures */}
+        {/* Signatures */}
         <div className="border-t border-border p-4">
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4">Signatures</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+            {/* Supervisor */}
             <div className="space-y-3">
               <p className="text-sm font-medium">Company Supervisor</p>
               <div className="space-y-2">
                 <div>
                   <p className="text-xs text-muted-foreground mb-1">Signature / Printed Name</p>
-                  {readOnly ? (
-                    <div className="h-9 border-b border-dashed border-border flex items-end pb-1">
-                      <span className="text-sm">{supervisorSig}</span>
-                    </div>
-                  ) : (
-                    <Input value={supervisorSig} onChange={(e) => setSupervisorSig(e.target.value)} placeholder="Supervisor name" />
-                  )}
+                  {readOnly
+                    ? <div className="h-9 border-b border-dashed border-border flex items-end pb-1"><span className="text-sm">{supervisorSig}</span></div>
+                    : <Input value={supervisorSig} onChange={(e) => setSupervisorSig(e.target.value)} placeholder="Supervisor name" />}
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground mb-1">Date</p>
-                  {readOnly ? (
-                    <div className="h-9 border-b border-dashed border-border flex items-end pb-1">
-                      <span className="text-sm">{supervisorDate}</span>
-                    </div>
-                  ) : (
-                    <Input type="date" value={supervisorDate} onChange={(e) => setSupervisorDate(e.target.value)} />
-                  )}
+                  {readOnly
+                    ? <div className="h-9 border-b border-dashed border-border flex items-end pb-1"><span className="text-sm">{supervisorDate}</span></div>
+                    : <Input type="date" value={supervisorDate} onChange={(e) => setSupervisorDate(e.target.value)} />}
                 </div>
               </div>
             </div>
+            {/* Student */}
             <div className="space-y-3">
               <p className="text-sm font-medium">Student Intern</p>
               <div className="space-y-2">
                 <div>
                   <p className="text-xs text-muted-foreground mb-1">Signature / Printed Name</p>
-                  {readOnly ? (
-                    <div className="h-9 border-b border-dashed border-border flex items-end pb-1">
-                      <span className="text-sm">{studentSig}</span>
-                    </div>
-                  ) : (
-                    <Input value={studentSig} onChange={(e) => setStudentSig(e.target.value)} placeholder="Your name" />
-                  )}
+                  {readOnly
+                    ? <div className="h-9 border-b border-dashed border-border flex items-end pb-1"><span className="text-sm">{studentSig}</span></div>
+                    : <Input value={studentSig} onChange={(e) => setStudentSig(e.target.value)} placeholder="Your name" />}
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground mb-1">Date</p>
-                  {readOnly ? (
-                    <div className="h-9 border-b border-dashed border-border flex items-end pb-1">
-                      <span className="text-sm">{studentDate}</span>
-                    </div>
-                  ) : (
-                    <Input type="date" value={studentDate} onChange={(e) => setStudentDate(e.target.value)} />
-                  )}
+                  {readOnly
+                    ? <div className="h-9 border-b border-dashed border-border flex items-end pb-1"><span className="text-sm">{studentDate}</span></div>
+                    : <Input type="date" value={studentDate} onChange={(e) => setStudentDate(e.target.value)} />}
                 </div>
               </div>
             </div>
@@ -525,14 +563,13 @@ export function DTRTable({
       </div>
 
       {/* ========================================= */}
-      {/* PRINT VIEW (Strict Word Document Layout)  */}
+      {/* PRINT VIEW                                */}
       {/* ========================================= */}
       <div
         id="dtr-print-document"
         className="hidden print:block w-full bg-white text-black mx-auto"
         style={{ padding: "0.5in 0.5in 0.5in 1in", fontFamily: "'Century Gothic', CenturyGothic, AppleGothic, sans-serif" }}
       >
-        {/* Title */}
         <h1
           className="text-center font-bold mb-6 tracking-wide uppercase"
           style={{ fontSize: "12pt", fontFamily: "'Century Gothic', CenturyGothic, AppleGothic, sans-serif" }}
@@ -540,23 +577,17 @@ export function DTRTable({
           DAILY ATTENDANCE AND ACCOMPLISHMENT FORM
         </h1>
 
-        {/* Student Name / Internship Site */}
         <div className="flex justify-between mb-3" style={{ fontSize: "10pt", fontFamily: "'Century Gothic', CenturyGothic, AppleGothic, sans-serif" }}>
           <div className="flex items-end">
             <span className="font-semibold whitespace-nowrap">Student Name:</span>
-            <span className="border-b border-black ml-2 px-4 min-w-[220px] text-center inline-block leading-tight pb-0.5">
-              {userName}
-            </span>
+            <span className="border-b border-black ml-2 px-4 min-w-[220px] text-center inline-block leading-tight pb-0.5">{userName}</span>
           </div>
           <div className="flex items-end">
             <span className="font-semibold whitespace-nowrap">Internship Site:</span>
-            <span className="border-b border-black ml-2 px-4 min-w-[220px] text-center inline-block leading-tight pb-0.5">
-              {internshipSite || "—"}
-            </span>
+            <span className="border-b border-black ml-2 px-4 min-w-[220px] text-center inline-block leading-tight pb-0.5">{internshipSite || "—"}</span>
           </div>
         </div>
 
-        {/* Period */}
         <div className="flex justify-between mb-4" style={{ fontSize: "10pt", fontFamily: "'Century Gothic', CenturyGothic, AppleGothic, sans-serif" }}>
           <div className="flex items-end">
             <span className="font-semibold whitespace-nowrap" style={{ marginBottom: "13px" }}>For the Period:</span>
@@ -564,9 +595,7 @@ export function DTRTable({
               <span className="border-b border-black px-4 min-w-[220px] text-center inline-block leading-tight pb-0.5">
                 {format(parseISO(days[0]), "MMMM d, yyyy")}
               </span>
-              <span style={{ fontSize: "8pt", letterSpacing: "0.04em", marginTop: "2px" }}>
-                Beginning Date
-              </span>
+              <span style={{ fontSize: "8pt", letterSpacing: "0.04em", marginTop: "2px" }}>Beginning Date</span>
             </div>
           </div>
           <div className="flex items-end">
@@ -575,61 +604,45 @@ export function DTRTable({
               <span className="border-b border-black px-4 min-w-[220px] text-center inline-block leading-tight pb-0.5">
                 {format(parseISO(days[days.length - 1]), "MMMM d, yyyy")}
               </span>
-              <span style={{ fontSize: "8pt", letterSpacing: "0.04em", marginTop: "2px" }}>
-                Ending Date
-              </span>
+              <span style={{ fontSize: "8pt", letterSpacing: "0.04em", marginTop: "2px" }}>Ending Date</span>
             </div>
           </div>
         </div>
 
-        {/* ─── Main table ─── */}
         <table
           className="w-full border-collapse border border-black mb-3 text-center"
           style={{ fontSize: "8pt", fontFamily: "'Century Gothic', CenturyGothic, AppleGothic, sans-serif", borderSpacing: 0 }}
         >
           <thead>
             <tr>
-              <th className="border border-black font-bold align-middle" style={{ padding: "2px 4px" }}>
-                Date
-              </th>
+              <th className="border border-black font-bold align-middle" style={{ padding: "2px 4px" }}>Date</th>
               {(["Morning", "Afternoon", "Overtime"] as const).map((label) => (
-                <th
-                  key={label}
-                  className="border border-black font-bold"
-                  colSpan={2}
-                  style={{ padding: "0", lineHeight: 1 }}
-                >
+                <th key={label} className="border border-black font-bold" colSpan={2} style={{ padding: "0", lineHeight: 1 }}>
                   <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 0, padding: "2px 4px" }}>
                     <span>{label}</span>
                     <span style={{ fontSize: "7pt", fontWeight: "bold", marginTop: "1px" }}>IN / OUT</span>
                   </div>
                 </th>
               ))}
-              <th className="border border-black font-bold align-middle" style={{ width: "28%", padding: "2px 4px" }}>
-                Accomplishment/s
-              </th>
-              <th className="border border-black font-bold align-middle" style={{ width: "7%", padding: "2px 4px" }}>
-                Total Hours
-              </th>
-              <th className="border border-black font-bold align-middle" style={{ width: "10%", padding: "2px 4px" }}>
-                Verified By
-              </th>
+              <th className="border border-black font-bold align-middle" style={{ width: "28%", padding: "2px 4px" }}>Accomplishment/s</th>
+              <th className="border border-black font-bold align-middle" style={{ width: "7%",  padding: "2px 4px" }}>Total Hours</th>
+              <th className="border border-black font-bold align-middle" style={{ width: "10%", padding: "2px 4px" }}>Verified By</th>
             </tr>
           </thead>
           <tbody>
             {days.map((date) => {
-              const row = rows[date];
-              const parsedDate = parseISO(date);
-              const dateLabel = format(parsedDate, "MM/dd/yyyy");
-              const hours = calcRowHours(row);
-              const weekend = isWeekend(parsedDate);
-              const dayName = format(parsedDate, "EEEE");
+              const row         = rows[date];
+              const parsedDate  = parseISO(date);
+              const dateLabel   = format(parsedDate, "MM/dd/yyyy");
+              const isFieldWork = fieldWorkDays.has(date);
+              const hours       = calcRowHours(row, isFieldWork);
+              const weekend     = isWeekend(parsedDate);
+              const dayName     = format(parsedDate, "EEEE");
 
               const hasNoTimes = !row.morningIn && !row.morningOut && !row.afternoonIn && !row.afternoonOut && !row.overtimeIn && !row.overtimeOut;
               const showDashes = weekend || (hasNoTimes && row.accomplishments);
               const accomplishmentLabel = weekend ? dayName : row.accomplishments || "";
               const dash = "———";
-
               const tdStyle: React.CSSProperties = { padding: "1px 3px", whiteSpace: "nowrap" };
 
               return (
@@ -663,7 +676,6 @@ export function DTRTable({
               </tr>
             ))}
 
-            {/* TOTAL HOURS row */}
             <tr>
               <td colSpan={8} className="border border-black text-right font-bold tracking-widest uppercase" style={{ padding: "2px 6px" }}>
                 TOTAL HOURS:
@@ -672,31 +684,17 @@ export function DTRTable({
               <td className="border border-black" style={{ padding: "2px 3px" }}></td>
             </tr>
 
-            {/* Previous / Total / Remaining summary row */}
             <tr>
-              <td colSpan={2} className="border border-black text-right font-bold whitespace-nowrap" style={{ padding: "2px 6px" }}>
-                Previous Hours Worked:
-              </td>
-              <td colSpan={1} className="border border-black text-center font-normal" style={{ padding: "2px 3px" }}>
-                {previousHours.toFixed(2)}
-              </td>
-              <td colSpan={2} className="border border-black text-right font-bold whitespace-nowrap" style={{ padding: "2px 6px" }}>
-                Total Hours Worked:
-              </td>
-              <td colSpan={2} className="border border-black text-center font-normal" style={{ padding: "2px 3px" }}>
-                {totalWorked.toFixed(2)}
-              </td>
-              <td colSpan={2} className="border border-black text-right font-bold whitespace-nowrap" style={{ padding: "2px 6px" }}>
-                Remaining Hours:
-              </td>
-              <td colSpan={1} className="border border-black text-center font-normal" style={{ padding: "2px 3px" }}>
-                {remaining.toFixed(2)}
-              </td>
+              <td colSpan={2} className="border border-black text-right font-bold whitespace-nowrap" style={{ padding: "2px 6px" }}>Previous Hours Worked:</td>
+              <td colSpan={1} className="border border-black text-center font-normal" style={{ padding: "2px 3px" }}>{previousHours.toFixed(2)}</td>
+              <td colSpan={2} className="border border-black text-right font-bold whitespace-nowrap" style={{ padding: "2px 6px" }}>Total Hours Worked:</td>
+              <td colSpan={2} className="border border-black text-center font-normal" style={{ padding: "2px 3px" }}>{totalWorked.toFixed(2)}</td>
+              <td colSpan={2} className="border border-black text-right font-bold whitespace-nowrap" style={{ padding: "2px 6px" }}>Remaining Hours:</td>
+              <td colSpan={1} className="border border-black text-center font-normal" style={{ padding: "2px 3px" }}>{remaining.toFixed(2)}</td>
             </tr>
           </tbody>
         </table>
 
-        {/* Certification text */}
         <p
           className="text-justify mb-6 leading-relaxed"
           style={{ fontSize: "10pt", fontFamily: "'Candara', Candara, Calibri, sans-serif", textIndent: "2em" }}
@@ -705,9 +703,7 @@ export function DTRTable({
           record of which was made daily at the time of arrival at and departure from office.
         </p>
 
-        {/* Signature section */}
         <div style={{ fontSize: "10pt", fontFamily: "'Century Gothic', CenturyGothic, AppleGothic, sans-serif" }} className="space-y-5">
-          {/* Supervisor row */}
           <div>
             <div className="flex items-end gap-4">
               <div className="border-b border-black pb-0.5 flex items-end" style={{ minWidth: "260px", flex: "1" }}>
@@ -722,8 +718,6 @@ export function DTRTable({
             </div>
             <p className="mt-1">Company Supervisor&apos;s Signature Over printed name</p>
           </div>
-
-          {/* Student row */}
           <div>
             <div className="flex items-end gap-4">
               <div className="border-b border-black pb-0.5 flex items-end" style={{ minWidth: "260px", flex: "1" }}>
