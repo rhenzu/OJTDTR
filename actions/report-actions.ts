@@ -24,6 +24,8 @@ function getWeekMonday(dateStr: string): string {
   return monday.toISOString().split("T")[0];
 }
 
+
+
 /** Returns the ISO date string of the Friday that is 4 days after
  *  the given Monday string. */
 function getWeekFriday(mondayStr: string): string {
@@ -59,6 +61,18 @@ function groupByCalendarWeek(records: any[]): {
 // ─────────────────────────────────────────────────────────────
 // FETCH only — no AI generation.
 // ─────────────────────────────────────────────────────────────
+export async function saveWeeklyReport(reportId: string, aiData: object) {
+  await dbConnect();
+
+  const report = await WeeklyReportModel.findById(reportId);
+  if (!report) throw new Error("Report not found.");
+
+  report.aiData = aiData;
+  await report.save();
+
+  revalidatePath("/weekly-reports");
+  return { success: true };
+}
 export async function getWeeksData(userId: string) {
   await dbConnect();
 
