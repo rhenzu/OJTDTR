@@ -51,6 +51,32 @@ function InlineText({
   );
 }
 
+/** A single-line inline input styled like the other editable fields */
+function InlineInput({
+  value,
+  onChange,
+  placeholder = "—",
+  className = "",
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  className?: string;
+}) {
+  return (
+    <input
+      type="text"
+      className={`w-full bg-yellow-50/60 border border-dashed border-yellow-400
+                 rounded px-1.5 py-1 text-[9pt] leading-snug focus:outline-none
+                 focus:bg-yellow-50 focus:border-yellow-500
+                 placeholder:text-gray-400 transition-colors ${className}`}
+      value={value}
+      placeholder={placeholder}
+      onChange={(e) => onChange(e.target.value)}
+    />
+  );
+}
+
 /** An editable bullet list */
 function InlineList({
   items,
@@ -137,20 +163,22 @@ export function WeeklyReportCard({
     problemsEncountered: "",
     solutions: "",
     goalsNextWeek: "",
+    notedByName: "KIRBY FUENTES",
+    notedByTitle: "OIC-IT DEPARTMENT, TSKI",
   };
 
   const [draft, setDraft] = useState({ ...emptyData, ...aiData });
 
   type DraftData = typeof emptyData;
 
-const setField = useCallback(
-  <K extends keyof DraftData>(key: K, val: DraftData[K]) =>
-    setDraft((prev: DraftData) => ({ ...prev, [key]: val })),
-  []
-);
+  const setField = useCallback(
+    <K extends keyof DraftData>(key: K, val: DraftData[K]) =>
+      setDraft((prev: DraftData) => ({ ...prev, [key]: val })),
+    []
+  );
 
   const handleEdit = () => {
-    setDraft({ ...emptyData, ...aiData }); // reset to latest saved data
+    setDraft({ ...emptyData, ...aiData });
     setIsEditing(true);
   };
 
@@ -188,7 +216,7 @@ const setField = useCallback(
   const inclusiveDate = `${startFmt} – ${endFmt}`;
 
   // Current data to display (draft while editing, aiData otherwise)
-  const data = isEditing ? draft : aiData;
+  const data = isEditing ? draft : { ...emptyData, ...aiData };
 
   if (!aiData)
     return (
@@ -501,10 +529,29 @@ const setField = useCallback(
           <div className="text-[9pt]">
             <p className="mb-6">Noted by:</p>
             <div className="w-56">
-              <p className="font-bold uppercase border-b border-black text-center pb-0.5 mb-0.5">
-                KIRBY FUENTES
-              </p>
-              <p className="text-center">OIC-IT DEPARTMENT, TSKI</p>
+              {isEditing ? (
+                <div className="space-y-1.5">
+                  <InlineInput
+                    value={draft.notedByName}
+                    onChange={(v) => setField("notedByName", v)}
+                    placeholder="Supervisor name…"
+                    className="font-bold uppercase text-center"
+                  />
+                  <InlineInput
+                    value={draft.notedByTitle}
+                    onChange={(v) => setField("notedByTitle", v)}
+                    placeholder="Title / Department…"
+                    className="text-center"
+                  />
+                </div>
+              ) : (
+                <>
+                  <p className="font-bold uppercase border-b border-black text-center pb-0.5 mb-0.5">
+                    {data.notedByName}
+                  </p>
+                  <p className="text-center">{data.notedByTitle}</p>
+                </>
+              )}
             </div>
           </div>
         </div>
