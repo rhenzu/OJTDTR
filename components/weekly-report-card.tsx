@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { format } from "date-fns";
 import { RefreshCw, Printer, Pencil, Check, X, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { regenerateWeeklyReport, saveWeeklyReport } from "@/actions/report-actions";
+import { useNotedBy } from "@/contexts/noted-by-context";
 
 interface ReportProps {
   report: any;
@@ -23,7 +24,6 @@ interface ReportProps {
 
 // ── Tiny inline helpers ──────────────────────────────────────────────────────
 
-/** A growing textarea that looks like plain text when not focused */
 function InlineText({
   value,
   onChange,
@@ -51,33 +51,6 @@ function InlineText({
   );
 }
 
-/** A single-line inline input styled like the other editable fields */
-function InlineInput({
-  value,
-  onChange,
-  placeholder = "—",
-  className = "",
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-  className?: string;
-}) {
-  return (
-    <input
-      type="text"
-      className={`w-full bg-yellow-50/60 border border-dashed border-yellow-400
-                 rounded px-1.5 py-1 text-[9pt] leading-snug focus:outline-none
-                 focus:bg-yellow-50 focus:border-yellow-500
-                 placeholder:text-gray-400 transition-colors ${className}`}
-      value={value}
-      placeholder={placeholder}
-      onChange={(e) => onChange(e.target.value)}
-    />
-  );
-}
-
-/** An editable bullet list */
 function InlineList({
   items,
   onChange,
@@ -146,6 +119,9 @@ export function WeeklyReportCard({
 }: ReportProps) {
   const { _id, weekNo, startDate, endDate, aiData, isComplete } = report;
 
+  // ── Global noted-by from context
+  const { notedBy } = useNotedBy();
+
   // ── Dialog / regen state
   const [customPrompt, setCustomPrompt] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
@@ -163,9 +139,19 @@ export function WeeklyReportCard({
     problemsEncountered: "",
     solutions: "",
     goalsNextWeek: "",
-    notedByName: "KIRBY FUENTES",
-    notedByTitle: "OIC-IT DEPARTMENT, TSKI",
   };
+
+  // ── liveData holds the current saved state and updates immediately on save
+  //    (fixes the stale display bug without requiring a page reload)
+  const [liveData, setLiveData] = useState({ ...emptyData, ...aiData });
+
+  // If the parent re-renders with new aiData (e.g. after AI regen), sync it in
+  useEffect(() => {
+    if (!isEditing) {
+      setLiveData({ ...emptyData, ...aiData });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aiData]);
 
   const [draft, setDraft] = useState({ ...emptyData, ...aiData });
 
@@ -178,12 +164,12 @@ export function WeeklyReportCard({
   );
 
   const handleEdit = () => {
-    setDraft({ ...emptyData, ...aiData });
+    setDraft({ ...liveData }); // start from latest live data, not stale aiData
     setIsEditing(true);
   };
 
   const handleCancel = () => {
-    setDraft({ ...emptyData, ...aiData });
+    setDraft({ ...liveData });
     setIsEditing(false);
   };
 
@@ -191,6 +177,8 @@ export function WeeklyReportCard({
     if (!_id) return;
     setIsSaving(true);
     await saveWeeklyReport(_id, draft);
+    // ✅ Update liveData immediately so the card reflects changes without reload
+    setLiveData({ ...draft });
     setIsSaving(false);
     setIsEditing(false);
   };
@@ -215,8 +203,8 @@ export function WeeklyReportCard({
       : format(end, "MMMM d, yyyy");
   const inclusiveDate = `${startFmt} – ${endFmt}`;
 
-  // Current data to display (draft while editing, aiData otherwise)
-  const data = isEditing ? draft : { ...emptyData, ...aiData };
+  // Show draft while editing, liveData otherwise
+  const data = isEditing ? draft : liveData;
 
   if (!aiData)
     return (
@@ -246,8 +234,6 @@ export function WeeklyReportCard({
 
       {/* ── Controls bar ──────────────────────────────────────────── */}
       <div className="absolute top-2 right-2 z-10 flex gap-2 print:hidden">
-
-        {/* Save / Cancel — shown only while editing */}
         {isEditing ? (
           <>
             <Button
@@ -271,9 +257,7 @@ export function WeeklyReportCard({
             </Button>
           </>
         ) : (
-          /* Normal controls — visible on hover */
           <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-            {/* Edit */}
             <Button
               variant="outline"
               size="sm"
@@ -284,7 +268,6 @@ export function WeeklyReportCard({
               Edit
             </Button>
 
-            {/* Print */}
             <Button
               variant="outline"
               size="sm"
@@ -295,7 +278,6 @@ export function WeeklyReportCard({
               Print week
             </Button>
 
-            {/* Regenerate */}
             <Dialog open={isOpen} onOpenChange={setIsOpen}>
               <DialogTrigger asChild>
                 <Button
@@ -525,33 +507,14 @@ export function WeeklyReportCard({
             </tbody>
           </table>
 
-          {/* Signature */}
+          {/* Signature — reads from global context, no per-card override */}
           <div className="text-[9pt]">
             <p className="mb-6">Noted by:</p>
             <div className="w-56">
-              {isEditing ? (
-                <div className="space-y-1.5">
-                  <InlineInput
-                    value={draft.notedByName}
-                    onChange={(v) => setField("notedByName", v)}
-                    placeholder="Supervisor name…"
-                    className="font-bold uppercase text-center"
-                  />
-                  <InlineInput
-                    value={draft.notedByTitle}
-                    onChange={(v) => setField("notedByTitle", v)}
-                    placeholder="Title / Department…"
-                    className="text-center"
-                  />
-                </div>
-              ) : (
-                <>
-                  <p className="font-bold uppercase border-b border-black text-center pb-0.5 mb-0.5">
-                    {data.notedByName}
-                  </p>
-                  <p className="text-center">{data.notedByTitle}</p>
-                </>
-              )}
+              <p className="font-bold uppercase border-b border-black text-center pb-0.5 mb-0.5">
+                {notedBy.name}
+              </p>
+              <p className="text-center">{notedBy.title}</p>
             </div>
           </div>
         </div>
