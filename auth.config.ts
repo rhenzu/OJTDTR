@@ -1,4 +1,5 @@
 import type { NextAuthConfig } from "next-auth";
+import { NextResponse } from "next/server";
 
 const publicRoutes = ["/login", "/register", "/forgot-password"];
 
@@ -10,9 +11,10 @@ export const authConfig = {
   callbacks: {
     authorized({ auth, request: { nextUrl } }) {
       const isLoggedIn = !!auth?.user;
-      const isPublic = publicRoutes.includes(nextUrl.pathname);
+      const isPublic = publicRoutes.some(route => nextUrl.pathname.startsWith(route));
       if (isPublic) return true;
-      return isLoggedIn;
+      if (!isLoggedIn) return NextResponse.redirect(new URL("/login", nextUrl));
+      return true;
     },
     async jwt({ token, user }) {
       if (user) {
