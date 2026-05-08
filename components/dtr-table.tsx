@@ -42,6 +42,13 @@ function formatPrintTime(time24?: string): string {
   return `${String(dh).padStart(2, "0")}:${String(m).padStart(2, "0")} ${ampm}`;
 }
 
+function formatHours(decimalHours: number): string {
+  const totalMins = Math.round(decimalHours * 60);
+  const h = Math.floor(totalMins / 60);
+  const m = totalMins % 60;
+  return `${h}.${String(m).padStart(2, "0")}`;
+}
+
 function accFontSize(text: string): string {
   const len = text.length;
   if (len > 160) return "7.5px";
@@ -209,7 +216,6 @@ export function DTRTable({
   const [saving, setSaving]                 = useState(false);
 
   // ── Dirty tracking ────────────────────────────────────────────────────────
-  // Snapshot of saved state so we can compare against current
   const savedSnapshot = useRef({
     rows:           buildInitialRows(),
     supervisorSig:  form?.supervisorSignature || "",
@@ -341,7 +347,6 @@ export function DTRTable({
         studentSignDate:     studentDate,
       });
 
-      // ✅ Update snapshot so form is no longer dirty
       savedSnapshot.current = {
         rows:           JSON.parse(JSON.stringify(rows)),
         supervisorSig,
@@ -382,7 +387,6 @@ export function DTRTable({
       {/* Action buttons */}
       {!readOnly && (
         <div className="flex gap-2 justify-end print:hidden flex-wrap items-center">
-          {/* Unsaved badge (compact, sits inline with buttons) */}
           {isDirty && (
             <span
               className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full"
@@ -599,7 +603,7 @@ export function DTRTable({
                     <td className="border border-border px-2 py-2 text-center font-mono font-semibold">
                       {hours > 0 ? (
                         <span className={isFieldWork ? "text-violet-600 dark:text-violet-400" : "text-emerald-600 dark:text-emerald-400"}>
-                          {hours.toFixed(2)}
+                          {formatHours(hours)}
                         </span>
                       ) : (
                         <span className="text-muted-foreground">—</span>
@@ -632,15 +636,15 @@ export function DTRTable({
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
             <div>
               <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold mb-0.5">Previous Hours</p>
-              <p className="font-mono text-lg font-bold">{previousHours.toFixed(2)}h</p>
+              <p className="font-mono text-lg font-bold">{formatHours(previousHours)}h</p>
             </div>
             <div>
               <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold mb-0.5">Hours This Form</p>
-              <p className="font-mono text-lg font-bold text-primary">{totalHoursThisForm.toFixed(2)}h</p>
+              <p className="font-mono text-lg font-bold text-primary">{formatHours(totalHoursThisForm)}h</p>
             </div>
             <div className="border-l-2 border-emerald-500/20 pl-4">
               <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold mb-0.5">Total (Prev + Current)</p>
-              <p className="font-mono text-xl font-bold text-emerald-600 dark:text-emerald-400">{totalWorked.toFixed(2)}h</p>
+              <p className="font-mono text-xl font-bold text-emerald-600 dark:text-emerald-400">{formatHours(totalWorked)}h</p>
             </div>
             <div>
               <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold mb-0.5">Required Hours</p>
@@ -648,7 +652,7 @@ export function DTRTable({
             </div>
             <div className="border-l-2 border-amber-500/20 pl-4">
               <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold mb-0.5">Remaining Hours</p>
-              <p className="font-mono text-xl font-bold text-amber-600 dark:text-amber-400">{remaining.toFixed(2)}h</p>
+              <p className="font-mono text-xl font-bold text-amber-600 dark:text-amber-400">{formatHours(remaining)}h</p>
             </div>
           </div>
         </div>
@@ -794,7 +798,7 @@ export function DTRTable({
                     {accomplishmentLabel}
                   </td>
                   <td className="border border-black font-semibold" style={tdStyle}>
-                    {hours > 0 ? hours.toFixed(2) : ""}
+                    {hours > 0 ? formatHours(hours) : ""}
                   </td>
                   <td className="border border-black" style={tdStyle}>{row.verifiedBy}</td>
                 </tr>
@@ -813,17 +817,17 @@ export function DTRTable({
               <td colSpan={8} className="border border-black text-right font-bold tracking-widest uppercase" style={{ padding: "2px 6px" }}>
                 TOTAL HOURS:
               </td>
-              <td className="border border-black font-bold" style={{ padding: "2px 3px" }}>{totalHoursThisForm.toFixed(2)}</td>
+              <td className="border border-black font-bold" style={{ padding: "2px 3px" }}>{formatHours(totalHoursThisForm)}</td>
               <td className="border border-black" style={{ padding: "2px 3px" }}></td>
             </tr>
 
             <tr>
               <td colSpan={2} className="border border-black text-right font-bold whitespace-nowrap" style={{ padding: "2px 6px" }}>Previous Hours Worked:</td>
-              <td colSpan={1} className="border border-black text-center font-normal" style={{ padding: "2px 3px" }}>{previousHours.toFixed(2)}</td>
+              <td colSpan={1} className="border border-black text-center font-normal" style={{ padding: "2px 3px" }}>{formatHours(previousHours)}</td>
               <td colSpan={2} className="border border-black text-right font-bold whitespace-nowrap" style={{ padding: "2px 6px" }}>Total Hours Worked:</td>
-              <td colSpan={2} className="border border-black text-center font-normal" style={{ padding: "2px 3px" }}>{totalWorked.toFixed(2)}</td>
+              <td colSpan={2} className="border border-black text-center font-normal" style={{ padding: "2px 3px" }}>{formatHours(totalWorked)}</td>
               <td colSpan={2} className="border border-black text-right font-bold whitespace-nowrap" style={{ padding: "2px 6px" }}>Remaining Hours:</td>
-              <td colSpan={1} className="border border-black text-center font-normal" style={{ padding: "2px 3px" }}>{remaining.toFixed(2)}</td>
+              <td colSpan={1} className="border border-black text-center font-normal" style={{ padding: "2px 3px" }}>{formatHours(remaining)}</td>
             </tr>
           </tbody>
         </table>
