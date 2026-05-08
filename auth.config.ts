@@ -1,12 +1,19 @@
-// auth.config.ts
 import type { NextAuthConfig } from "next-auth";
 
+const publicRoutes = ["/login", "/register", "/forgot-password"];
+
 export const authConfig = {
-    secret: process.env.NEXTAUTH_SECRET,
+  secret: process.env.NEXTAUTH_SECRET,
   session: { strategy: "jwt" },
   pages: { signIn: "/login" },
-  providers: [], // Leave empty here, we will add Credentials in auth.ts
+  providers: [],
   callbacks: {
+    authorized({ auth, request: { nextUrl } }) {
+      const isLoggedIn = !!auth?.user;
+      const isPublic = publicRoutes.includes(nextUrl.pathname);
+      if (isPublic) return true;
+      return isLoggedIn;
+    },
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id as string;
